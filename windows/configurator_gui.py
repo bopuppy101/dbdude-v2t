@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright (c) 2025-2026 Michael Foster. Licensed under CC BY-NC 4.0.
 """Voice2Text Configurator GUI for Ubuntu - PySide6 version."""
 
 import sys
