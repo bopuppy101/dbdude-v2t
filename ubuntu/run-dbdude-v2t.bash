@@ -38,4 +38,4 @@ else
 fi
 
 # Run with sudo, preserving DISPLAY for xdotool
-sudo DISPLAY="$DISPLAY" LD_LIBRARY_PATH="$FINAL_LD_PATH" "${VENV_PYTHON}" "${SCRIPT_DIR}/voice2text.py" "$@"
+sudo DISPLAY="$DISPLAY" LD_LIBRARY_PATH="$FINAL_LD_PATH" "${VENV_PYTHON}" "${SCRIPT_DIR}/dbdude-v2t.py" "$@"

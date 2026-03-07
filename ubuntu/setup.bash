@@ -36,7 +36,7 @@ else
 fi
 
 # Make launcher executable
-chmod +x "${SCRIPT_DIR}/run-voice2text.bash"
+chmod +x "${SCRIPT_DIR}/run-dbdude-v2t.bash"
 
 # Create logs directory
 mkdir -p ~/logs
@@ -46,9 +46,9 @@ echo "=== Setup Complete ==="
 echo ""
 echo "To run:"
 echo "  cd ${SCRIPT_DIR}"
-echo "  ./run-voice2text.bash"
+echo "  ./run-dbdude-v2t.bash"
 echo ""
 echo "Or add this alias to ~/.bashrc:"
-echo "  alias rw5='${SCRIPT_DIR}/run-voice2text.bash'"
+echo "  alias rv='${SCRIPT_DIR}/run-dbdude-v2t.bash'"
 echo ""
 echo "NOTE: Requires sudo to run (keyboard module needs root on Linux)"

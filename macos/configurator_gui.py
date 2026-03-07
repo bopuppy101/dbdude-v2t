@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
-"""Voice2Text Configurator GUI for macOS - PySide6 version."""
+"""dbdude-v2t Configurator GUI for macOS - PySide6 version."""
 
 import sys
 import subprocess
@@ -19,7 +19,7 @@ import sounddevice as sd
 
 def get_user_data_dir():
     """Get macOS user data directory."""
-    data_dir = Path.home() / "Library" / "Application Support" / "Voice2Text"
+    data_dir = Path.home() / "Library" / "Application Support" / "dbdude-v2t"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
@@ -197,10 +197,10 @@ def get_input_devices():
 
 
 def find_v2t_process():
-    """Find the running voice2text process (Python script or bundled app)."""
+    """Find the running dbdude-v2t process (Python script or bundled app)."""
     pids = []
     # Search for both bundled executable and Python script
-    patterns = ['voice2text-2026-macos$', 'voice2text-2026-macos.py']
+    patterns = ['dbdude-v2t$', 'dbdude-v2t.py']
     for pattern in patterns:
         try:
             result = subprocess.run(
@@ -217,7 +217,7 @@ def find_v2t_process():
 
 
 def restart_v2t():
-    """Restart the voice2text-2026-macos.py application with graceful shutdown."""
+    """Restart the dbdude-v2t application with graceful shutdown."""
     import os
     import time
     from pathlib import Path
@@ -227,7 +227,7 @@ def restart_v2t():
     for pid in pids:
         try:
             os.kill(pid, signal.SIGTERM)  # Graceful shutdown
-            print(f"Sent SIGTERM to voice2text-2026-macos.py (PID {pid})")
+            print(f"Sent SIGTERM to dbdude-v2t.py (PID {pid})")
         except ProcessLookupError:
             pass
         except Exception as e:
@@ -239,14 +239,14 @@ def restart_v2t():
             time.sleep(0.1)
             remaining = find_v2t_process()
             if not remaining:
-                print("voice2text-2026-macos.py shut down gracefully")
+                print("dbdude-v2t.py shut down gracefully")
                 break
         else:
             # Force kill if still running
             for pid in find_v2t_process():
                 try:
                     os.kill(pid, signal.SIGKILL)
-                    print(f"Force killed voice2text-2026-macos.py (PID {pid})")
+                    print(f"Force killed dbdude-v2t.py (PID {pid})")
                 except:
                     pass
 
@@ -259,7 +259,7 @@ def restart_v2t():
     if getattr(sys, 'frozen', False):
         # Bundled app - find main executable in same directory
         exe_dir = Path(sys.argv[0]).resolve().parent
-        v2t_path = exe_dir / "voice2text-2026-macos"
+        v2t_path = exe_dir / "dbdude-v2t"
         if v2t_path.exists():
             subprocess.Popen(
                 [str(v2t_path)],
@@ -267,14 +267,14 @@ def restart_v2t():
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-            print(f"Started new voice2text instance from {v2t_path}")
+            print(f"Started new dbdude-v2t instance from {v2t_path}")
             return True
         else:
-            print(f"voice2text executable not found at {v2t_path}")
+            print(f"dbdude-v2t executable not found at {v2t_path}")
             return False
     else:
         # Development mode - run Python script
-        v2t_path = Path(__file__).parent / "voice2text-2026-macos.py"
+        v2t_path = Path(__file__).parent / "dbdude-v2t.py"
         if v2t_path.exists():
             subprocess.Popen(
                 [sys.executable, str(v2t_path)],
@@ -282,10 +282,10 @@ def restart_v2t():
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-            print("Started new voice2text-2026-macos.py instance")
+            print("Started new dbdude-v2t.py instance")
             return True
         else:
-            print(f"voice2text-2026-macos.py not found at {v2t_path}")
+            print(f"dbdude-v2t.py not found at {v2t_path}")
             return False
 
 
@@ -297,7 +297,7 @@ class ConfiguratorDialog(QDialog):
         self.input_devices = get_input_devices()
         self._loading = True  # Prevent saves during initial setup
 
-        self.setWindowTitle("Voice2Text - Configurator")
+        self.setWindowTitle("dbdude-v2t - Configurator")
         self.setFixedSize(580, 600)
         self.setStyleSheet(STYLESHEET)
 
@@ -317,7 +317,7 @@ class ConfiguratorDialog(QDialog):
         layout.setContentsMargins(24, 24, 24, 24)
 
         # Header
-        header = QLabel("Voice2Text - Configurator")
+        header = QLabel("dbdude-v2t - Configurator")
         header.setStyleSheet("font-size: 20px; font-weight: bold; color: #1a1a1a;")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
@@ -424,7 +424,7 @@ class ConfiguratorDialog(QDialog):
             QPushButton:pressed { background-color: #1e7e34; }
         """
 
-        restart_btn = QPushButton("  Restart Voice2Text  ")
+        restart_btn = QPushButton("  Restart dbdude-v2t  ")
         restart_btn.setStyleSheet(RESTART_STYLE)
         restart_btn.clicked.connect(self.on_restart)
         btn_layout.addWidget(restart_btn)
@@ -466,7 +466,7 @@ class ConfiguratorDialog(QDialog):
         save_settings(self.settings)
 
     def on_restart(self):
-        """Restart Voice2Text application."""
+        """Restart dbdude-v2t application."""
         from PySide6.QtWidgets import QMessageBox
         from PySide6.QtCore import QTimer
 
@@ -484,12 +484,12 @@ class ConfiguratorDialog(QDialog):
             # Brief delay to let the new process initialize
             QTimer.singleShot(500, lambda: QMessageBox.information(
                 self, "Restart Complete",
-                "Voice2Text has been restarted.\n\n"
+                "dbdude-v2t has been restarted.\n\n"
                 "New settings are now active."
             ))
         else:
             QMessageBox.warning(self, "Restart Failed",
-                "Could not restart Voice2Text.\nPlease restart manually.")
+                "Could not restart dbdude-v2t.\nPlease restart manually.")
 
 
 def show_configurator():

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
-"""Voice2Text Mapping/Rules Editor for Ubuntu - PySide6 version."""
+"""dbdude-v2t Mapping/Rules Editor for Ubuntu - PySide6 version."""
 
 import sys
 import os
@@ -105,12 +105,12 @@ QGroupBox::title {
 
 
 def get_user_data_dir():
-    """Get Linux user data directory (~/.voice2text)."""
+    """Get Linux user data directory (~/.dbdude-v2t)."""
     sudo_user = os.environ.get('SUDO_USER')
     if sudo_user:
-        data_dir = Path(f"/home/{sudo_user}/.voice2text")
+        data_dir = Path(f"/home/{sudo_user}/.dbdude-v2t")
     else:
-        data_dir = Path.home() / ".voice2text"
+        data_dir = Path.home() / ".dbdude-v2t"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
@@ -174,7 +174,7 @@ class MappingRulesWindow(QMainWindow):
         self.data = load_mappings()
         self.available_packs = get_available_packs()
 
-        self.setWindowTitle("Voice2Text - Mapping/Rules")
+        self.setWindowTitle("dbdude-v2t - Mapping/Rules")
         self.setMinimumSize(700, 600)
         self.resize(700, 600)
         self.setStyleSheet(STYLESHEET)
@@ -197,7 +197,7 @@ class MappingRulesWindow(QMainWindow):
         layout.setSpacing(16)
 
         # Header
-        header = QLabel("Voice2Text - Mapping/Rules")
+        header = QLabel("dbdude-v2t - Mapping/Rules")
         header.setStyleSheet("font-size: 20px; font-weight: bold; color: #1a1a1a;")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
@@ -258,7 +258,7 @@ class MappingRulesWindow(QMainWindow):
         layout.addStretch()
 
         # Info label
-        info = QLabel("Changes take effect after restarting Voice2Text.")
+        info = QLabel("Changes take effect after restarting dbdude-v2t.")
         info.setStyleSheet("font-size: 12px; color: #888888; font-style: italic;")
         layout.addWidget(info)
 

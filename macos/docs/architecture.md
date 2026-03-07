@@ -1,4 +1,4 @@
-# Voice2Text macOS - Architecture (2025-12-20)
+# dbdude-v2t macOS - Architecture (2025-12-20)
 
 ## Current Architecture
 
@@ -149,7 +149,7 @@ def transcription_worker():
 
 ## Files
 
-- `voice2text-2026-macos.py` - Main application (all logic in one file)
+- `dbdude-v2t.py` - Main application (all logic in one file)
 - `icons/` - Menu bar icons (ready, recording, transcribing states)
 - `docs/` - This documentation
 

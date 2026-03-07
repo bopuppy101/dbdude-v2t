@@ -43,9 +43,9 @@ def _load_settings():
     """Load settings from settings.json."""
     sudo_user = os.environ.get('SUDO_USER')
     if sudo_user:
-        settings_file = Path(f"/home/{sudo_user}/.voice2text/settings.json")
+        settings_file = Path(f"/home/{sudo_user}/.dbdude-v2t/settings.json")
     else:
-        settings_file = Path.home() / ".voice2text" / "settings.json"
+        settings_file = Path.home() / ".dbdude-v2t" / "settings.json"
 
     defaults = {"model": "base", "language": "en", "log": False, "device": None}
     if settings_file.exists():
@@ -106,15 +106,15 @@ def get_app_dir():
 
 
 def get_user_data_dir():
-    """Get path to user data directory (~/.voice2text).
+    """Get path to user data directory (~/.dbdude-v2t).
 
     Handles sudo: uses SUDO_USER's home instead of /root.
     """
     # When running with sudo, get the real user's home
     sudo_user = os.environ.get('SUDO_USER')
     if sudo_user:
-        return Path(f"/home/{sudo_user}/.voice2text")
-    return Path.home() / ".voice2text"
+        return Path(f"/home/{sudo_user}/.dbdude-v2t")
+    return Path.home() / ".dbdude-v2t"
 
 
 # --- Text Processing Logic ---
@@ -134,7 +134,7 @@ NAME_RE = None
 
 
 def load_custom_mappings():
-    """Load user custom mappings from ~/.voice2text and enabled map packs from app directory."""
+    """Load user custom mappings from ~/.dbdude-v2t and enabled map packs from app directory."""
     global NAME_RE
 
     user_data_dir = get_user_data_dir()
@@ -431,7 +431,7 @@ def continuous_toggle_pressed():
 
 # --- System Tray Application ---
 
-class Voice2TextApp:
+class DbdudeV2tApp:
     """Main application with system tray icon."""
 
     def __init__(self):
@@ -447,7 +447,7 @@ class Voice2TextApp:
         # Create system tray icon
         self.tray = QSystemTrayIcon()
         self.tray.setIcon(QIcon(ICON_IDLE))
-        self.tray.setToolTip(f"Voice2Text v{VERSION} - Idle")
+        self.tray.setToolTip(f"dbdude-v2t v{VERSION} - Idle")
 
         # Create context menu
         self._create_menu()
@@ -465,7 +465,7 @@ class Voice2TextApp:
         menu = QMenu()
 
         # Version header
-        version_action = QAction(f"Voice2Text v{VERSION}", menu)
+        version_action = QAction(f"dbdude-v2t v{VERSION}", menu)
         version_action.setEnabled(False)
         menu.addAction(version_action)
 
@@ -507,13 +507,13 @@ class Voice2TextApp:
 
         if status == "Recording":
             self.tray.setIcon(QIcon(ICON_RECORDING))
-            self.tray.setToolTip(f"Voice2Text v{VERSION} - Recording")
+            self.tray.setToolTip(f"dbdude-v2t v{VERSION} - Recording")
         elif status == "Transcribing":
             self.tray.setIcon(QIcon(ICON_TRANSCRIBING))
-            self.tray.setToolTip(f"Voice2Text v{VERSION} - Transcribing")
+            self.tray.setToolTip(f"dbdude-v2t v{VERSION} - Transcribing")
         else:
             self.tray.setIcon(QIcon(ICON_IDLE))
-            self.tray.setToolTip(f"Voice2Text v{VERSION} - Idle")
+            self.tray.setToolTip(f"dbdude-v2t v{VERSION} - Idle")
 
     def _poll_keyboard(self):
         """Poll keyboard state (called every 20ms by QTimer)."""
@@ -638,7 +638,7 @@ class Voice2TextApp:
 
         # Create dialog
         dialog = QDialog()
-        dialog.setWindowTitle("Voice2Text - Recent Transcriptions")
+        dialog.setWindowTitle("dbdude-v2t - Recent Transcriptions")
         dialog.setMinimumSize(600, 400)
         dialog.resize(600, 400)
 
@@ -662,8 +662,8 @@ class Voice2TextApp:
             if not logs_path.exists():
                 text_edit.setPlainText(
                     "No logs directory found.\n\n"
-                    "Run Voice2Text with --log to enable logging:\n"
-                    "  ./run-voice2text.bash --log"
+                    "Run dbdude-v2t with --log to enable logging:\n"
+                    "  ./run-dbdude-v2t.bash --log"
                 )
                 return
 
@@ -742,7 +742,7 @@ class Voice2TextApp:
 
     def _show_help(self):
         """Show general help."""
-        help_text = """Voice2Text for Ubuntu
+        help_text = """dbdude-v2t for Ubuntu
 
 RECORDING:
 • Hold Alt+Shift to record
@@ -756,7 +756,7 @@ CONTINUOUS MODE:
 EXIT:
 • Ctrl+Shift+Q to quit
 • Or use Exit from tray menu"""
-        QMessageBox.information(None, "Voice2Text Help", help_text)
+        QMessageBox.information(None, "dbdude-v2t Help", help_text)
 
     def _show_shortcuts(self):
         """Show keyboard shortcuts."""
@@ -811,7 +811,7 @@ The icon appears in your top panel."""
             self.file_watcher.fileChanged.connect(self._on_file_changed)
             print(f"INFO: Watching for changes: {', '.join(watch_files)}")
 
-        print(">> Voice2Text with System Tray")
+        print(">> dbdude-v2t with System Tray")
         print(">> Hold Alt+Shift to RECORD; release to STOP & TRANSCRIBE.")
         print(">> Press Ctrl+Shift+Q to exit. Press Ctrl+Shift+Space to toggle continuous mode.")
         print(">> NOTE: Requires sudo on Linux (keyboard module needs root)")
@@ -841,5 +841,5 @@ The icon appears in your top panel."""
 # --- Main Entry Point ---
 
 if __name__ == '__main__':
-    app = Voice2TextApp()
+    app = DbdudeV2tApp()
     app.run()

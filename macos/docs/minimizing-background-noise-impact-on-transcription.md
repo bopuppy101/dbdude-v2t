@@ -192,7 +192,7 @@ def filter_hallucinations(text):
 
 ## Recommended Approach
 
-For Voice2Text, a layered approach:
+For dbdude-v2t, a layered approach:
 
 1. **Minimum duration check** (trivial, catches accidental presses)
 2. **RMS threshold OR Silero VAD** (pre-filter before Whisper)

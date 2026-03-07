@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
-"""Voice2Text Configurator GUI for Ubuntu - PySide6 version."""
+"""dbdude-v2t Configurator GUI for Ubuntu - PySide6 version."""
 
 import sys
 import os
@@ -19,9 +19,6 @@ from PySide6.QtGui import QPalette, QColor
 import sounddevice as sd
 
 
-APPDATA_FOLDER = "Voice2Text"
-
-
 def get_app_dir():
     """Get the directory containing the app (works for both Python and Nuitka exe)."""
     # For Nuitka onefile: use sys.argv[0] which has the original exe path
@@ -37,8 +34,8 @@ def get_app_dir():
 
 
 def get_user_data_dir():
-    """Get user data directory (~/.voice2text)."""
-    data_dir = Path.home() / ".voice2text"
+    """Get user data directory (~/.dbdude-v2t)."""
+    data_dir = Path.home() / ".dbdude-v2t"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
@@ -239,19 +236,19 @@ def get_input_devices():
 
 
 def find_v2t_process():
-    """Find the running voice2text process."""
+    """Find the running dbdude-v2t process."""
     pids = []
     our_pid = os.getpid()
 
     if sys.platform == 'win32':
         try:
-            # Use tasklist to find voice2text.exe
+            # Use tasklist to find dbdude-v2t.exe
             result = subprocess.run(
-                ['tasklist', '/FI', 'IMAGENAME eq voice2text.exe', '/FO', 'CSV', '/NH'],
+                ['tasklist', '/FI', 'IMAGENAME eq dbdude-v2t.exe', '/FO', 'CSV', '/NH'],
                 capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW
             )
             for line in result.stdout.strip().split('\n'):
-                if line and 'voice2text.exe' in line.lower():
+                if line and 'dbdude-v2t.exe' in line.lower():
                     parts = line.replace('"', '').split(',')
                     if len(parts) >= 2:
                         try:
@@ -266,7 +263,7 @@ def find_v2t_process():
         # Linux/macOS: use pgrep
         try:
             result = subprocess.run(
-                ['pgrep', '-f', 'voice2text'],
+                ['pgrep', '-f', 'dbdude-v2t'],
                 capture_output=True, text=True
             )
             if result.stdout.strip():
@@ -282,7 +279,7 @@ def find_v2t_process():
 
 
 def restart_v2t():
-    """Restart the voice2text application with graceful shutdown."""
+    """Restart the dbdude-v2t application with graceful shutdown."""
     import time
 
     # Find and stop existing process
@@ -296,7 +293,7 @@ def restart_v2t():
                     ['taskkill', '/PID', str(pid)],
                     capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW
                 )
-                print(f"Sent terminate to voice2text.exe (PID {pid})")
+                print(f"Sent terminate to dbdude-v2t (PID {pid})")
             except Exception as e:
                 print(f"Error terminating process {pid}: {e}")
 
@@ -305,7 +302,7 @@ def restart_v2t():
             for _ in range(30):
                 time.sleep(0.1)
                 if not find_v2t_process():
-                    print("voice2text.exe shut down gracefully")
+                    print("dbdude-v2t shut down gracefully")
                     break
             else:
                 # Force kill if still running
@@ -315,7 +312,7 @@ def restart_v2t():
                             ['taskkill', '/F', '/PID', str(pid)],
                             capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW
                         )
-                        print(f"Force killed voice2text.exe (PID {pid})")
+                        print(f"Force killed dbdude-v2t (PID {pid})")
                     except:
                         pass
     else:
@@ -323,7 +320,7 @@ def restart_v2t():
         for pid in pids:
             try:
                 os.kill(pid, signal.SIGTERM)
-                print(f"Sent SIGTERM to voice2text (PID {pid})")
+                print(f"Sent SIGTERM to dbdude-v2t (PID {pid})")
             except ProcessLookupError:
                 pass
             except Exception as e:
@@ -333,28 +330,28 @@ def restart_v2t():
             for _ in range(30):
                 time.sleep(0.1)
                 if not find_v2t_process():
-                    print("voice2text shut down gracefully")
+                    print("dbdude-v2t shut down gracefully")
                     break
             else:
                 for pid in find_v2t_process():
                     try:
                         os.kill(pid, signal.SIGKILL)
-                        print(f"Force killed voice2text (PID {pid})")
+                        print(f"Force killed dbdude-v2t (PID {pid})")
                     except:
                         pass
 
     # Brief pause before starting new instance
     time.sleep(0.2)
 
-    # Find and start voice2text
+    # Find and start dbdude-v2t
     v2t_dir = Path(__file__).parent
 
     if sys.platform == 'win32':
-        # Windows: look for voice2text.exe
-        v2t_exe = v2t_dir / "voice2text.exe"
+        # Windows: look for dbdude-v2t.exe
+        v2t_exe = v2t_dir / "dbdude-v2t.exe"
         if not v2t_exe.exists():
             # Try parent directory (if running from source)
-            v2t_exe = v2t_dir.parent.parent / "dist" / "windows" / "voice2text.dist" / "voice2text.exe"
+            v2t_exe = v2t_dir.parent.parent / "dist" / "windows" / "dbdude-v2t.dist" / "dbdude-v2t.exe"
 
         if v2t_exe.exists():
             subprocess.Popen(
@@ -364,14 +361,14 @@ def restart_v2t():
                 stderr=subprocess.DEVNULL,
                 cwd=str(v2t_exe.parent)
             )
-            print(f"Started new voice2text.exe instance")
+            print(f"Started new dbdude-v2t instance")
             return True
         else:
-            print(f"voice2text.exe not found")
+            print(f"dbdude-v2t not found")
             return False
     else:
         # Linux/macOS: use run script or direct execution
-        run_script = v2t_dir / "run-voice2text.bash"
+        run_script = v2t_dir / "run-dbdude-v2t.bash"
         if run_script.exists():
             subprocess.Popen(
                 ['bash', str(run_script)],
@@ -380,10 +377,10 @@ def restart_v2t():
                 stderr=subprocess.DEVNULL,
                 cwd=str(v2t_dir)
             )
-            print("Started new voice2text instance via run script")
+            print("Started new dbdude-v2t instance via run script")
             return True
         else:
-            v2t_path = v2t_dir / "voice2text.py"
+            v2t_path = v2t_dir / "dbdude-v2t.py"
             if v2t_path.exists():
                 subprocess.Popen(
                     ['sudo', sys.executable, str(v2t_path)],
@@ -391,10 +388,10 @@ def restart_v2t():
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
-                print("Started new voice2text instance")
+                print("Started new dbdude-v2t instance")
                 return True
             else:
-                print(f"voice2text not found at {v2t_path}")
+                print(f"dbdude-v2t not found at {v2t_path}")
                 return False
 
 
@@ -406,7 +403,7 @@ class ConfiguratorDialog(QDialog):
         self.input_devices = get_input_devices()
         self._loading = True
 
-        self.setWindowTitle("Voice2Text - Configurator")
+        self.setWindowTitle("dbdude-v2t - Configurator")
         self.setFixedSize(580, 780)
         self.setStyleSheet(STYLESHEET)
 
@@ -426,7 +423,7 @@ class ConfiguratorDialog(QDialog):
         layout.setContentsMargins(24, 24, 24, 24)
 
         # Header
-        header = QLabel("Voice2Text - Configurator")
+        header = QLabel("dbdude-v2t - Configurator")
         header.setStyleSheet("font-size: 20px; font-weight: bold; color: #1a1a1a;")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
@@ -586,7 +583,7 @@ class ConfiguratorDialog(QDialog):
             QPushButton:pressed { background-color: #1e7e34; }
         """
 
-        restart_btn = QPushButton("  Restart Voice2Text  ")
+        restart_btn = QPushButton("  Restart dbdude-v2t  ")
         restart_btn.setStyleSheet(RESTART_STYLE)
         restart_btn.clicked.connect(self.on_restart)
         btn_layout.addWidget(restart_btn)
@@ -657,10 +654,10 @@ class ConfiguratorDialog(QDialog):
         if old_device != new_device:
             QMessageBox.information(self, "Restart Required",
                 "Microphone change requires a restart.\n\n"
-                "Please restart Voice2Text for the new microphone to take effect.")
+                "Please restart dbdude-v2t for the new microphone to take effect.")
 
     def on_restart(self):
-        """Restart Voice2Text application."""
+        """Restart dbdude-v2t application."""
         self.setCursor(Qt.WaitCursor)
         self.setEnabled(False)
 
@@ -672,12 +669,12 @@ class ConfiguratorDialog(QDialog):
         if success:
             QTimer.singleShot(500, lambda: QMessageBox.information(
                 self, "Restart Complete",
-                "Voice2Text has been restarted.\n\n"
+                "dbdude-v2t has been restarted.\n\n"
                 "New settings are now active."
             ))
         else:
             QMessageBox.warning(self, "Restart Failed",
-                "Could not restart Voice2Text.\nPlease restart manually.")
+                "Could not restart dbdude-v2t.\nPlease restart manually.")
 
 
 def show_configurator():

@@ -1,0 +1,13 @@
+# Windows faster-whisper requirements
+# Install with: pip install -r requirements.txt
+
+faster-whisper
+numpy
+scipy
+sounddevice
+keyboard
+ctranslate2
+regex
+pystray
+Pillow
+PySide6

@@ -8,7 +8,7 @@ Wayland's security model prevents X11 tools from injecting synthetic input
 into Wayland-native windows.
 
 `xdotool type` silently fails on Wayland-native windows — it reports success
-(exit code 0) but keystrokes are never delivered. This broke voice2text's
+(exit code 0) but keystrokes are never delivered. This broke dbdude-v2t's
 ability to type transcribed text into the focused window.
 
 ## Root Cause
@@ -68,7 +68,7 @@ The only difference: ydotool does not have the `--clearmodifiers` flag.
 ## Backward Compatibility
 
 To revert to xdotool (e.g., on a system without ydotool), change the
-subprocess call in `voice2text.py` `type_with_xdotool()`:
+subprocess call in `dbdude-v2t.py` `type_with_xdotool()`:
 
 ```python
 # ydotool (current - works on X11 and Wayland)

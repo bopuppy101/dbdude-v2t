@@ -1,4 +1,4 @@
-# Voice2text, port to macOS. 
+# dbdude-v2t, port to macOS. 
 
 ## Set up the virtual environment. 
 

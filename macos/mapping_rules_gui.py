@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
-"""Voice2Text Mapping/Rules Editor for macOS - PySide6 version."""
+"""dbdude-v2t Mapping/Rules Editor for macOS - PySide6 version."""
 
 import sys
 import json
@@ -143,11 +143,11 @@ DANGER_STYLE = """
     QPushButton:pressed { background-color: #b71c1c; }
 """
 
-APPDATA_FOLDER = "Voice2Text"
+APPDATA_FOLDER = "dbdude-v2t"
 
 
 def get_user_data_dir():
-    """Get macOS user data directory (~/Library/Application Support/Voice2Text)."""
+    """Get macOS user data directory (~/Library/Application Support/dbdude-v2t)."""
     data_dir = Path.home() / "Library" / "Application Support" / APPDATA_FOLDER
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
@@ -226,7 +226,7 @@ class MappingRulesDialog(QDialog):
         self.packs = get_available_packs()
         self.selected_pack = None
 
-        self.setWindowTitle("Voice2Text - Mapping/Rules")
+        self.setWindowTitle("dbdude-v2t - Mapping/Rules")
         self.setMinimumSize(900, 700)
         self.resize(1000, 750)
         self.setStyleSheet(STYLESHEET)
@@ -247,7 +247,7 @@ class MappingRulesDialog(QDialog):
         layout.setSpacing(16)
 
         # Header
-        header = QLabel("Voice2Text - Mapping/Rules")
+        header = QLabel("dbdude-v2t - Mapping/Rules")
         header.setStyleSheet("font-size: 20px; font-weight: bold; color: #1a1a1a;")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
@@ -480,7 +480,7 @@ class MappingRulesDialog(QDialog):
         header.setStyleSheet("font-size: 16px; font-weight: bold;")
         left_layout.addWidget(header)
 
-        notice = QLabel("Rules are evaluated in order; first match wins.\nRestart Voice2Text after changes.")
+        notice = QLabel("Rules are evaluated in order; first match wins.\nRestart dbdude-v2t after changes.")
         notice.setStyleSheet("font-size: 11px; color: #666666; font-style: italic;")
         left_layout.addWidget(notice)
 

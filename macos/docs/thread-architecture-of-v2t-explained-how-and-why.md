@@ -1,12 +1,12 @@
-# Thread Architecture of Voice2Text: How and Why
+# Thread Architecture of dbdude-v2t: How and Why
 
 ## Overview
 
-Voice2Text is a multi-threaded application that handles audio capture, transcription, system tray management, and GUI dialogs concurrently. Understanding the thread architecture is critical for debugging issues and adding new features, especially those involving GUI components.
+dbdude-v2t is a multi-threaded application that handles audio capture, transcription, system tray management, and GUI dialogs concurrently. Understanding the thread architecture is critical for debugging issues and adding new features, especially those involving GUI components.
 
 ## Why Multiple Threads?
 
-Voice2Text must perform several tasks simultaneously without blocking:
+dbdude-v2t must perform several tasks simultaneously without blocking:
 - Listen for keyboard shortcuts (Alt+Shift for recording)
 - Respond to system tray menu clicks
 - Capture audio from the microphone
@@ -38,7 +38,7 @@ Without threading, any long-running operation (like transcription) would freeze 
 ### 2. pystray Thread (System Tray)
 
 **What it does:**
-- Displays the Voice2Text icon in the Windows system tray
+- Displays the dbdude-v2t icon in the Windows system tray
 - Shows the right-click context menu
 - Handles menu item callbacks (Manage License, Show Configurator, Exit, etc.)
 - Updates icon state (normal, recording, transcribing)

@@ -18,28 +18,9 @@ Local, privacy-first voice-to-text for your desktop. Hold a hotkey to record, re
 
 | Platform | Hotkey | Text Output | AI Engine |
 |----------|--------|-------------|-----------|
-| **Ubuntu** | Alt+Shift (hold) | xdotool | faster-whisper (CPU/CUDA) |
 | **Windows** | Alt+Shift (hold) | AutoHotkey | faster-whisper (CPU/CUDA) |
 | **macOS** | Fn (hold) | Quartz events | mlx-whisper (Apple Silicon) |
-
-## Quick Start
-
-Each platform has its own directory with a setup script:
-
-```bash
-# Ubuntu
-cd ubuntu
-bash setup.bash
-./run-voice2text.bash
-
-# macOS
-cd macos
-# See macos/docs/INSTALL.md
-
-# Windows
-cd windows
-# Run voice2text.py with Python
-```
+| **Ubuntu** | Alt+Shift (hold) | xdotool | faster-whisper (CPU/CUDA) |
 
 ## Keyboard Shortcuts
 
@@ -50,6 +31,80 @@ cd windows
 | Ctrl+Shift+Q | Exit |
 
 macOS uses Fn instead of Alt+Shift.
+
+## Installation
+
+**Requires Python 3.10 or later.** Verify your version:
+
+```bash
+python --version    # Windows
+python3 --version   # macOS / Ubuntu
+```
+
+Each platform has a setup script that creates a Python virtual environment and installs all dependencies. The install downloads a significant number of packages including a Hugging Face Whisper model for speech recognition, so expect it to take several minutes depending on your internet connection.
+
+### Windows
+
+Open PowerShell in the project directory and run:
+
+```powershell
+cd windows
+.\setup.ps1
+```
+
+If you get an execution policy error, use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+To launch, double-click `windows\dbdude-v2t.bat` or pin it to your taskbar. You can also run manually:
+
+```powershell
+cd windows
+.\venv\Scripts\python.exe dbdude-v2t.py
+```
+
+### macOS
+
+```bash
+cd macos
+bash setup.bash
+```
+
+To launch, double-click `dbdude-v2t.command` or drag it to your Dock for quick access. You can also run manually:
+
+```bash
+cd macos
+source venv/bin/activate
+python3 dbdude-v2t.py
+```
+
+macOS will prompt for Accessibility and Microphone permissions on first use. Grant both for dbdude-v2t to function.
+
+### Ubuntu
+
+```bash
+cd ubuntu
+bash setup.bash
+```
+
+To launch:
+
+```bash
+cd ubuntu
+./run-dbdude-v2t.bash
+```
+
+Or add an alias to `~/.bashrc` for quick access:
+
+```bash
+alias rv='/path/to/ubuntu/run-dbdude-v2t.bash'
+```
+
+A `dbdude-v2t.desktop` file is also included. To use it, update the paths inside the file and copy it to `~/.local/share/applications/`.
+
+Note: Ubuntu requires `sudo` for keyboard input detection.
 
 ## License
 

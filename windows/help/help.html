@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice2Text Help</title>
+    <title>dbdude-v2t Help</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -95,11 +95,11 @@
 </head>
 <body>
 
-<h1>Voice2Text Help</h1>
+<h1>dbdude-v2t Help</h1>
 
-<p>Voice2Text is a GPU-accelerated voice-to-text tool that lets you <em>speak</em> text directly into any application.</p>
+<p>dbdude-v2t is a GPU-accelerated voice-to-text tool that lets you <em>speak</em> text directly into any application.</p>
 
-<p>Voice2Text uses an underlying AI model named Faster Whisper. The base model is included with the installer. Voice2Text is optimized for NVIDIA GPUs but will work on CPU alone (with slower performance).</p>
+<p>dbdude-v2t uses an underlying AI model named Faster Whisper. The base model is included with the installer. dbdude-v2t is optimized for NVIDIA GPUs but will work on CPU alone (with slower performance).</p>
 
 <p>It supports two modes of operation:</p>
 <ul>
@@ -114,32 +114,32 @@
 <ol>
     <li>Run <code>v2t-setup-2026.exe</code></li>
     <li>Accept the license agreement</li>
-    <li>Choose installation folder (default: <code>C:\Program Files\voice2text\</code>)</li>
+    <li>Choose installation folder (default: <code>C:\Program Files\dbdude-v2t\</code>)</li>
     <li>Optionally create a desktop shortcut</li>
     <li>Click Install</li>
 </ol>
 
 <hr>
 
-<h2>2. Starting Voice2Text</h2>
+<h2>2. Starting dbdude-v2t</h2>
 
 <h3>From the Start Menu</h3>
 <ol>
     <li>Open the Windows Start Menu</li>
-    <li>Search for <strong>Voice2Text</strong></li>
+    <li>Search for <strong>dbdude-v2t</strong></li>
     <li>Click to launch</li>
 </ol>
 
 <h3>What Happens at Startup</h3>
-<p>When Voice2Text launches, it opens a configurator window where you can:</p>
+<p>When dbdude-v2t launches, it opens a configurator window where you can:</p>
 <ul>
     <li>Select the Whisper model size</li>
     <li>Choose your microphone</li>
     <li>Enable/disable logging</li>
-    <li>Click <strong>Start Voice2Text</strong> to begin</li>
+    <li>Click <strong>Start dbdude-v2t</strong> to begin</li>
 </ul>
 
-<p>Voice2Text runs in your Windows system tray. The icon shows the current state:</p>
+<p>dbdude-v2t runs in your Windows system tray. The icon shows the current state:</p>
 <ul>
     <li><span class="icon-blue">Blue</span> — Ready, waiting for you</li>
     <li><span class="icon-green">Green</span> — Recording your voice</li>
@@ -173,11 +173,11 @@
 <ol>
     <li>Hold <span class="hotkey">Alt+Shift</span> while speaking</li>
     <li>Release the keys</li>
-    <li>Voice2Text transcribes your speech and types it into the active window</li>
+    <li>dbdude-v2t transcribes your speech and types it into the active window</li>
 </ol>
 
 <div class="tip">
-    <strong>Tip:</strong> You can use Voice2Text inside any app: ChatGPT, Claude, MS Word, Gmail, VSCode, Slack, Chrome, Notepad — anything!
+    <strong>Tip:</strong> You can use dbdude-v2t inside any app: ChatGPT, Claude, MS Word, Gmail, VSCode, Slack, Chrome, Notepad — anything!
 </div>
 
 <hr>
@@ -236,7 +236,7 @@
 
 <h2>6. Viewing Your Logs</h2>
 
-<p><strong>Logging is disabled by default.</strong> To enable logging, check the "Enable Logging" checkbox in the Settings window before clicking "Start Voice2Text".</p>
+<p><strong>Logging is disabled by default.</strong> To enable logging, check the "Enable Logging" checkbox in the Settings window before clicking "Start dbdude-v2t".</p>
 
 <p>When logging is enabled, transcribed text is stored in:</p>
 <pre><code>C:\Users\&lt;YourName&gt;\logs\</code></pre>
@@ -245,7 +245,7 @@
 
 <hr>
 
-<h2>7. Stopping Voice2Text</h2>
+<h2>7. Stopping dbdude-v2t</h2>
 
 <p>Three ways to exit:</p>
 <ol>
@@ -268,7 +268,7 @@
 <p>Launch it from the <strong>Mapping/Rules</strong> button in the settings window, or right-click the systray icon and select <strong>Open Mapping/Rules</strong>.</p>
 
 <h3>Map Packs</h3>
-<p>Pre-built collections of mappings that ship with Voice2Text:</p>
+<p>Pre-built collections of mappings that ship with dbdude-v2t:</p>
 <ul>
     <li><strong>Programmer</strong> — Programming symbols (e.g., "open paren" → "(", "backtick" → "`")</li>
     <li><strong>Punctuation</strong> — Spoken punctuation to symbols (e.g., "question mark" → "?")</li>
@@ -276,7 +276,7 @@
 
 <h3>File Location</h3>
 <p>Your custom mappings are stored in:</p>
-<pre><code>%APPDATA%\Voice2Text\custom_mappings.json</code></pre>
+<pre><code>~\.dbdude-v2t\custom_mappings.json</code></pre>
 
 <hr>
 
@@ -339,7 +339,7 @@
 
 <h3>File Location</h3>
 <p>Rules are stored in:</p>
-<pre><code>%APPDATA%\Voice2Text\rules.json</code></pre>
+<pre><code>~\.dbdude-v2t\rules.json</code></pre>
 
 <hr>
 
@@ -371,7 +371,7 @@
     <li><strong>Open Logs Folder</strong> — Quick access to your transcription logs</li>
     <li><strong>Show Help</strong> — Open this help document</li>
     <li><strong>Show Shortcuts</strong> — Quick reference for keyboard shortcuts</li>
-    <li><strong>Exit</strong> — Clean shutdown of Voice2Text</li>
+    <li><strong>Exit</strong> — Clean shutdown of dbdude-v2t</li>
 </ul>
 
 <hr>
@@ -379,7 +379,7 @@
 <h2>11. Troubleshooting</h2>
 
 <h3>Nothing is typing into my window</h3>
-<p>Make sure the window is focused — Voice2Text types into the <em>active window</em>.</p>
+<p>Make sure the window is focused — dbdude-v2t types into the <em>active window</em>.</p>
 
 <h3>"Started recording…" but nothing transcribes</h3>
 <ul>
@@ -398,13 +398,13 @@
 <p>Normal — the GPU model must warm up on first run.</p>
 
 <div class="warning">
-    <strong>Warning:</strong> Don't run more than one copy of Voice2Text at a time. If you see two V2T icons in your system tray, right-click one and select Exit.
+    <strong>Warning:</strong> Don't run more than one copy of dbdude-v2t at a time. If you see two V2T icons in your system tray, right-click one and select Exit.
 </div>
 
 <hr>
 
 <p style="text-align: center; color: #666; margin-top: 40px;">
-    Voice2Text 2026 &copy; Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
+    dbdude-v2t 2026 &copy; Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
 </p>
 
 </body>

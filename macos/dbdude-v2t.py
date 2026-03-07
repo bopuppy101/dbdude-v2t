@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
-"""Voice2Text for macOS - Hold Fn to record, release to transcribe."""
+"""dbdude-v2t for macOS - Hold Fn to record, release to transcribe."""
 
 # Suppress semaphore cleanup warning from multiprocessing (mlx_whisper internal)
 import os
@@ -125,7 +125,7 @@ SETTINGS = {
 
 def get_user_data_dir():
     """Get macOS user data directory."""
-    data_dir = Path.home() / "Library" / "Application Support" / "Voice2Text"
+    data_dir = Path.home() / "Library" / "Application Support" / "dbdude-v2t"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
@@ -582,7 +582,7 @@ if __name__ == "__main__":
     from datetime import datetime
 
     print("=" * 50, flush=True)
-    print("Voice2Text for macOS", flush=True)
+    print("dbdude-v2t for macOS", flush=True)
     print("=" * 50, flush=True)
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
     print(flush=True)

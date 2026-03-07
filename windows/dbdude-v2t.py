@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
-# Voice2Text - Speech to text with GUI configurator
+# dbdude-v2t - Speech to text with GUI configurator
 # Uses AutoHotkey for text output instead of keyboard.write()
 
 VERSION = "2026"
@@ -9,7 +9,14 @@ import os
 # Allow duplicate OpenMP runtimes (NumPy MKL + ONNX) to coexist
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
+# Add NVIDIA CUDA DLL paths when running from a venv with pip-installed CUDA packages
 import sys
+_site_packages = os.path.join(sys.prefix, "Lib", "site-packages")
+for _nvidia_lib in ["nvidia/cublas/bin", "nvidia/cudnn/bin"]:
+    _dll_path = os.path.join(_site_packages, _nvidia_lib)
+    if os.path.isdir(_dll_path):
+        os.add_dll_directory(_dll_path)
+        os.environ["PATH"] = _dll_path + os.pathsep + os.environ.get("PATH", "")
 import regex  # Use regex instead of re for possessive quantifiers (prevents catastrophic backtracking)
 import time
 import json
@@ -129,8 +136,6 @@ MIN_TRANSCRIPTION_LENGTH = 1
 WHISPER_BEAM_SIZE = 2
 
 # App data directory name
-APPDATA_FOLDER = "Voice2Text"
-
 # Module-level debug flag (set by run_voice2text)
 _DEBUG_MODE = False
 
@@ -152,8 +157,8 @@ def get_app_dir():
 
 
 def get_user_data_dir():
-    """Get path to user data directory (~/.voice2text)."""
-    return Path.home() / ".voice2text"
+    """Get path to user data directory (~/.dbdude-v2t)."""
+    return Path.home() / ".dbdude-v2t"
 
 
 def is_nuitka_exe():
@@ -191,7 +196,7 @@ def open_help_file(filename):
 
 # --- Settings Persistence ---
 def get_settings_path():
-    """Get path to settings file (stored in %APPDATA%/Voice2Text)."""
+    """Get path to settings file (stored in ~/.dbdude-v2t)."""
     return get_user_data_dir() / "settings.json"
 
 
@@ -355,10 +360,10 @@ def build_name_re():
 
 
 def load_custom_mappings():
-    """Load user custom mappings from %APPDATA% and enabled map packs from app directory."""
+    """Load user custom mappings from ~/.dbdude-v2t and enabled map packs from app directory."""
     global WILDCARD_MODE
 
-    # User data in %APPDATA%/Voice2Text
+    # User data in ~/.dbdude-v2t
     user_data_dir = get_user_data_dir()
     maps_file = user_data_dir / "custom_mappings.json"
 
@@ -459,7 +464,7 @@ def load_custom_mappings():
 
 
 def load_rules():
-    """Load user-defined rules from %APPDATA%/Voice2Text/rules.json."""
+    """Load user-defined rules from ~/.dbdude-v2t/rules.json."""
     global RULES
 
     rules_file = get_user_data_dir() / "rules.json"
@@ -804,7 +809,7 @@ class SystrayManager:
     def _create_menu(self):
         """Create the context menu (responds to both left and right click)."""
         return pystray.Menu(
-            pystray.MenuItem(f"Voice2Text v{VERSION}", None, enabled=False),
+            pystray.MenuItem(f"dbdude-v2t v{VERSION}", None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(lambda item: f"Status: {self.status_text}", None, enabled=False),
             pystray.Menu.SEPARATOR,
@@ -967,9 +972,9 @@ class SystrayManager:
     def start(self):
         """Start the systray icon in a background thread."""
         self.icon = pystray.Icon(
-            "voice2text",
+            "dbdude-v2t",
             self._icons["normal"],
-            "Voice2Text - Ready",
+            "dbdude-v2t - Ready",
             menu=self._create_menu()
         )
 
@@ -1007,11 +1012,11 @@ class SystrayManager:
 
             # Update tooltip
             tooltip_map = {
-                "normal": "Voice2Text - Ready",
-                "recording": "Voice2Text - Recording...",
-                "transcribing": "Voice2Text - Transcribing...",
+                "normal": "dbdude-v2t - Ready",
+                "recording": "dbdude-v2t - Recording...",
+                "transcribing": "dbdude-v2t - Transcribing...",
             }
-            self.icon.title = tooltip_map.get(state, "Voice2Text")
+            self.icon.title = tooltip_map.get(state, "dbdude-v2t")
 
     def set_recording(self):
         """Set icon to recording state."""
@@ -1184,9 +1189,9 @@ def show_settings_gui(initial_model='medium', initial_lang='en', initial_log=Fal
     return load_settings()
 
 
-# --- Main Voice2Text Engine ---
+# --- Main dbdude-v2t Engine ---
 def run_voice2text(model_name, language, enable_logging, device_name, debug_mode=False, push_to_talk_keys=None):
-    """Run the voice2text engine with given settings."""
+    """Run the dbdude-v2t engine with given settings."""
     global _DEBUG_MODE
     _DEBUG_MODE = debug_mode
 
@@ -1410,7 +1415,7 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
         enabled_keys_display.append("Left Ctrl+Shift")
     ptt_keys_display = " or ".join(enabled_keys_display) if enabled_keys_display else "Left Alt+Shift"
 
-    print(f">> Voice2Text v{VERSION}")
+    print(f">> dbdude-v2t v{VERSION}")
     print(f">> Session started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f">> Hold [{ptt_keys_display}] to RECORD; release to STOP & TRANSCRIBE.")
     print(">> Press Ctrl+Shift+Q to exit. Press Ctrl+Alt+R to toggle Hands-Free recording.")
@@ -1652,7 +1657,7 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
 # --- Main Entry Point ---
 def main():
     try:
-        log_error("INFO: Voice2Text starting...")
+        log_error("INFO: dbdude-v2t starting...")
 
         # Initialize Tk root before anything else (must happen before threads start)
         # This allows all dialogs to use Toplevel without Tk initialization issues in compiled code

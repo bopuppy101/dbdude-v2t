@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
-"""Voice2Text Configurator GUI for Ubuntu - PySide6 version."""
+"""dbdude-v2t Configurator GUI for Ubuntu - PySide6 version."""
 
 import sys
 import os
@@ -20,13 +20,13 @@ import sounddevice as sd
 
 
 def get_user_data_dir():
-    """Get Linux user data directory (~/.voice2text)."""
+    """Get Linux user data directory (~/.dbdude-v2t)."""
     # Handle sudo: use SUDO_USER's home instead of /root
     sudo_user = os.environ.get('SUDO_USER')
     if sudo_user:
-        data_dir = Path(f"/home/{sudo_user}/.voice2text")
+        data_dir = Path(f"/home/{sudo_user}/.dbdude-v2t")
     else:
-        data_dir = Path.home() / ".voice2text"
+        data_dir = Path.home() / ".dbdude-v2t"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
@@ -203,10 +203,10 @@ def get_input_devices():
 
 
 def find_v2t_process():
-    """Find the running voice2text.py process."""
+    """Find the running dbdude-v2t.py process."""
     try:
         result = subprocess.run(
-            ['pgrep', '-f', 'voice2text.py'],
+            ['pgrep', '-f', 'dbdude-v2t.py'],
             capture_output=True, text=True
         )
         if result.stdout.strip():
@@ -220,7 +220,7 @@ def find_v2t_process():
 
 
 def restart_v2t():
-    """Restart the voice2text.py application with graceful shutdown."""
+    """Restart the dbdude-v2t.py application with graceful shutdown."""
     import time
 
     # Find and gracefully stop existing process
@@ -228,7 +228,7 @@ def restart_v2t():
     for pid in pids:
         try:
             os.kill(pid, signal.SIGTERM)
-            print(f"Sent SIGTERM to voice2text.py (PID {pid})")
+            print(f"Sent SIGTERM to dbdude-v2t.py (PID {pid})")
         except ProcessLookupError:
             pass
         except Exception as e:
@@ -240,14 +240,14 @@ def restart_v2t():
             time.sleep(0.1)
             remaining = find_v2t_process()
             if not remaining:
-                print("voice2text.py shut down gracefully")
+                print("dbdude-v2t.py shut down gracefully")
                 break
         else:
             # Force kill if still running
             for pid in find_v2t_process():
                 try:
                     os.kill(pid, signal.SIGKILL)
-                    print(f"Force killed voice2text.py (PID {pid})")
+                    print(f"Force killed dbdude-v2t.py (PID {pid})")
                 except:
                     pass
 
@@ -256,7 +256,7 @@ def restart_v2t():
 
     # Start new instance using the run script
     v2t_dir = Path(__file__).parent
-    run_script = v2t_dir / "run-voice2text.bash"
+    run_script = v2t_dir / "run-dbdude-v2t.bash"
 
     if run_script.exists():
         subprocess.Popen(
@@ -266,11 +266,11 @@ def restart_v2t():
             stderr=subprocess.DEVNULL,
             cwd=str(v2t_dir)
         )
-        print("Started new voice2text.py instance via run script")
+        print("Started new dbdude-v2t.py instance via run script")
         return True
     else:
         # Fallback: try running directly
-        v2t_path = v2t_dir / "voice2text.py"
+        v2t_path = v2t_dir / "dbdude-v2t.py"
         if v2t_path.exists():
             subprocess.Popen(
                 ['sudo', sys.executable, str(v2t_path)],
@@ -278,10 +278,10 @@ def restart_v2t():
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-            print("Started new voice2text.py instance")
+            print("Started new dbdude-v2t.py instance")
             return True
         else:
-            print(f"voice2text.py not found at {v2t_path}")
+            print(f"dbdude-v2t.py not found at {v2t_path}")
             return False
 
 
@@ -293,7 +293,7 @@ class ConfiguratorDialog(QDialog):
         self.input_devices = get_input_devices()
         self._loading = True
 
-        self.setWindowTitle("Voice2Text - Configurator")
+        self.setWindowTitle("dbdude-v2t - Configurator")
         self.setFixedSize(580, 600)
         self.setStyleSheet(STYLESHEET)
 
@@ -313,7 +313,7 @@ class ConfiguratorDialog(QDialog):
         layout.setContentsMargins(24, 24, 24, 24)
 
         # Header
-        header = QLabel("Voice2Text - Configurator")
+        header = QLabel("dbdude-v2t - Configurator")
         header.setStyleSheet("font-size: 20px; font-weight: bold; color: #1a1a1a;")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
@@ -420,7 +420,7 @@ class ConfiguratorDialog(QDialog):
             QPushButton:pressed { background-color: #1e7e34; }
         """
 
-        restart_btn = QPushButton("  Restart Voice2Text  ")
+        restart_btn = QPushButton("  Restart dbdude-v2t  ")
         restart_btn.setStyleSheet(RESTART_STYLE)
         restart_btn.clicked.connect(self.on_restart)
         btn_layout.addWidget(restart_btn)
@@ -473,10 +473,10 @@ class ConfiguratorDialog(QDialog):
         if old_device != new_device:
             QMessageBox.information(self, "Restart Required",
                 "Microphone change requires a restart.\n\n"
-                "Please restart Voice2Text for the new microphone to take effect.")
+                "Please restart dbdude-v2t for the new microphone to take effect.")
 
     def on_restart(self):
-        """Restart Voice2Text application."""
+        """Restart dbdude-v2t application."""
         self.setCursor(Qt.WaitCursor)
         self.setEnabled(False)
 
@@ -488,12 +488,12 @@ class ConfiguratorDialog(QDialog):
         if success:
             QTimer.singleShot(500, lambda: QMessageBox.information(
                 self, "Restart Complete",
-                "Voice2Text has been restarted.\n\n"
+                "dbdude-v2t has been restarted.\n\n"
                 "New settings are now active."
             ))
         else:
             QMessageBox.warning(self, "Restart Failed",
-                "Could not restart Voice2Text.\nPlease restart manually.")
+                "Could not restart dbdude-v2t.\nPlease restart manually.")
 
 
 def show_configurator():
