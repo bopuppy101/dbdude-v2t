@@ -8,7 +8,7 @@ sounddevice
 keyboard
 ctranslate2
 regex
-PySide6>=6.8.0,<6.9.0
+PySide6
 
 # GPU support (optional - install if you have NVIDIA GPU)
 # pip install nvidia-cudnn-cu12 nvidia-cublas-cu12
