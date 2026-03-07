@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2025-2026 Michael Foster. Licensed under CC BY-NC 4.0.
+# Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
 """Voice2Text for macOS - Hold Fn to record, release to transcribe."""
 
 # Suppress semaphore cleanup warning from multiprocessing (mlx_whisper internal)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (c) 2025-2026 Michael Foster. Licensed under CC BY-NC 4.0.
+# Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
 # Ubuntu launcher - handles CUDA paths and runs with sudo
 
 set -euo pipefail

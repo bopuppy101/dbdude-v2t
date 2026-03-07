@@ -1,4 +1,4 @@
-; Copyright (c) 2025-2026 Michael Foster. Licensed under CC BY-NC 4.0.
+; Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 #NoTrayIcon

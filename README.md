@@ -55,4 +55,4 @@ macOS uses Fn instead of Alt+Shift.
 
 [CC BY-NC 4.0](LICENSE) - Free for non-commercial use.
 
-Copyright (c) 2025-2026 Michael Foster
+Copyright (c) 2025-2026 Michael Foster / DBDude Inc.
