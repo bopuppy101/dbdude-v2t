@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice2Text Quick Reference</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c5aa0;
+            border-bottom: 3px solid #2c5aa0;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        h2 {
+            color: #2c5aa0;
+            margin-top: 25px;
+            font-size: 1.1em;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 10px 0 20px 0;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px 15px;
+            text-align: left;
+        }
+        th {
+            background-color: #2c5aa0;
+            color: white;
+            font-weight: 600;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .hotkey {
+            background-color: #2c5aa0;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.95em;
+            white-space: nowrap;
+        }
+        .icon-box {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        .icon-blue { background-color: #2c5aa0; }
+        .icon-green { background-color: #28a745; }
+        .icon-amber { background-color: #ffc107; }
+        .section {
+            background-color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .footer {
+            text-align: center;
+            color: #666;
+            margin-top: 30px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Voice2Text Quick Reference</h1>
+
+<div class="section">
+    <h2>Keyboard Shortcuts</h2>
+    <table>
+        <tr>
+            <th>Action</th>
+            <th>Shortcut</th>
+        </tr>
+        <tr>
+            <td>Record (Interactive)</td>
+            <td><span class="hotkey">Hold Alt + Shift</span></td>
+        </tr>
+        <tr>
+            <td>Stop &amp; Transcribe</td>
+            <td><span class="hotkey">Release Alt + Shift</span></td>
+        </tr>
+        <tr>
+            <td>Toggle Hands-Free Mode</td>
+            <td><span class="hotkey">Ctrl + Alt + R</span></td>
+        </tr>
+        <tr>
+            <td>Exit Voice2Text</td>
+            <td><span class="hotkey">Ctrl + Shift + Q</span></td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <h2>System Tray Icon Colors</h2>
+    <table>
+        <tr>
+            <th>Color</th>
+            <th>Status</th>
+        </tr>
+        <tr>
+            <td><span class="icon-box icon-blue"></span> Blue</td>
+            <td>Ready — waiting for input</td>
+        </tr>
+        <tr>
+            <td><span class="icon-box icon-green"></span> Green</td>
+            <td>Recording — capturing audio</td>
+        </tr>
+        <tr>
+            <td><span class="icon-box icon-amber"></span> Amber</td>
+            <td>Transcribing — processing speech</td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <h2>Two Recording Modes</h2>
+    <table>
+        <tr>
+            <th>Mode</th>
+            <th>How to Use</th>
+        </tr>
+        <tr>
+            <td><strong>Interactive</strong></td>
+            <td>Hold <span class="hotkey">Alt+Shift</span> while speaking, release to transcribe</td>
+        </tr>
+        <tr>
+            <td><strong>Hands-Free</strong></td>
+            <td>Press <span class="hotkey">Ctrl+Alt+R</span> to start, press again to stop &amp; transcribe</td>
+        </tr>
+    </table>
+</div>
+
+<div class="section">
+    <h2>Quick Tips</h2>
+    <ul>
+        <li>Text is typed into the <strong>active window</strong> — make sure your target app has focus</li>
+        <li>Speak naturally — Whisper handles punctuation automatically</li>
+        <li>Right-click the tray icon to access Mapping/Rules editor, logs, and help</li>
+        <li>Custom mappings fix misheard words; Rules control formatting</li>
+    </ul>
+</div>
+
+<div class="section">
+    <h2>File Locations</h2>
+    <table>
+        <tr>
+            <th>File</th>
+            <th>Location</th>
+        </tr>
+        <tr>
+            <td>Custom Mappings</td>
+            <td><code>%APPDATA%\Voice2Text\custom_mappings.json</code></td>
+        </tr>
+        <tr>
+            <td>Rules</td>
+            <td><code>%APPDATA%\Voice2Text\rules.json</code></td>
+        </tr>
+        <tr>
+            <td>Logs</td>
+            <td><code>%USERPROFILE%\logs\</code></td>
+        </tr>
+    </table>
+</div>
+
+<p class="footer">
+    Voice2Text 2026 &copy; Michael Foster / DBDude Inc.
+</p>
+
+</body>
+</html>

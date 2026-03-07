@@ -1,0 +1,16 @@
+# Ubuntu faster-whisper requirements
+# Install with: pip install -r requirements.txt
+
+faster-whisper
+numpy
+scipy
+sounddevice
+keyboard
+ctranslate2
+regex
+
+# GPU support (optional - install if you have NVIDIA GPU)
+# pip install nvidia-cudnn-cu12 nvidia-cublas-cu12
+
+# Also need system packages:
+# sudo apt install portaudio19-dev xdotool

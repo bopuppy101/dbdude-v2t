@@ -1,0 +1,18 @@
+{
+    "_name": "Punctuation",
+    "_description": "Spoken punctuation to symbols (e.g., 'question mark' to ?)",
+    "names": {
+        "pound sign": {"value": "#", "strip_whitespace_before": true, "strip_whitespace_after": true},
+        "hash sign": {"value": "#", "strip_whitespace_before": true, "strip_whitespace_after": true},
+        "question mark": {"value": "?", "strip_whitespace_before": true, "strip_whitespace_after": true},
+        "exclamation point": {"value": "!", "strip_whitespace_before": true, "strip_whitespace_after": true},
+        "exclamation mark": {"value": "!", "strip_whitespace_before": true, "strip_whitespace_after": true},
+        "dash": {"value": "-", "strip_whitespace_before": true, "strip_whitespace_after": true},
+        "hyphen": {"value": "-", "strip_whitespace_before": true, "strip_whitespace_after": true},
+        "double dash": {"value": "--", "strip_whitespace_before": true, "strip_whitespace_after": true},
+        "em dash": {"value": "—", "strip_whitespace_before": true, "strip_whitespace_after": true},
+        "underscore": {"value": "_", "strip_whitespace_before": true, "strip_whitespace_after": true},
+        "dunder": {"value": "__", "strip_whitespace_before": true, "strip_whitespace_after": true},
+        "double underscore": {"value": "__", "strip_whitespace_before": true, "strip_whitespace_after": true}
+    }
+}
