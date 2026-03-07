@@ -788,7 +788,8 @@ class MappingRulesWindow(QMainWindow):
         example_layout = QVBoxLayout(example_group)
 
         example_label = QLabel("• Short phrase formatting: If 3 words or less,\n  remove punctuation and lowercase")
-        example_label.setStyleSheet("color: #0078d4; cursor: pointer;")
+        example_label.setStyleSheet("color: #0078d4;")
+        example_label.setCursor(Qt.PointingHandCursor)
         example_label.mousePressEvent = lambda e: self.load_example_rule()
         example_layout.addWidget(example_label)
 
@@ -1012,8 +1013,9 @@ class MappingRulesWindow(QMainWindow):
 
         layout.addWidget(contents_group)
 
-        # Populate pack list
+        # Populate pack list, then connect signal for checkbox changes
         self._refresh_pack_list()
+        self.pack_list.itemChanged.connect(self.on_pack_toggle)
 
         # Status
         status = QLabel("Restart to pick up new mappings.")
@@ -1022,6 +1024,7 @@ class MappingRulesWindow(QMainWindow):
 
     def _refresh_pack_list(self):
         """Refresh the pack list with checkboxes."""
+        self.pack_list.blockSignals(True)
         self.pack_list.clear()
         enabled_packs = self.data.get("enabled_packs", [])
 
@@ -1035,12 +1038,7 @@ class MappingRulesWindow(QMainWindow):
             item.setCheckState(Qt.Checked if pack_name in enabled_packs else Qt.Unchecked)
             self.pack_list.addItem(item)
 
-        # Connect itemChanged after populating to avoid triggering during setup
-        try:
-            self.pack_list.itemChanged.disconnect()
-        except:
-            pass
-        self.pack_list.itemChanged.connect(self.on_pack_toggle)
+        self.pack_list.blockSignals(False)
 
     def on_pack_click(self, item):
         """Handle pack click - show contents."""
