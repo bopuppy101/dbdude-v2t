@@ -382,9 +382,9 @@ def audio_callback(indata, frames, time_info, status):
 
 def audio_stream_worker():
     """Runs in a separate thread. Opens the stream and keeps it alive."""
-    # Get device from settings, default to device 3 if not set
+    # Get device from settings, default to system default if not set
     device_name = _settings.get('device')
-    audio_device = 3  # fallback default
+    audio_device = None  # fallback to system default
 
     if device_name:
         # Find device by name
