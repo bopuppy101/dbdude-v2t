@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2025 Michael Foster / DBDude Inc. All rights reserved.
+# Copyright (c) 2025-2026 Michael Foster. Licensed under CC BY-NC 4.0.
 # Voice2Text - Speech to text with GUI configurator
 # Uses AutoHotkey for text output instead of keyboard.write()
 

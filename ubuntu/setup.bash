@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Setup script for faster-whisper on Ubuntu
-# Copyright (c) 2025 Michael Foster. All rights reserved.
+# Copyright (c) 2025-2026 Michael Foster. Licensed under CC BY-NC 4.0.
 
 set -euo pipefail
 

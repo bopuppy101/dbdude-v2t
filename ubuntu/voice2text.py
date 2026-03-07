@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2025 Michael Foster. All rights reserved.
+# Copyright (c) 2025-2026 Michael Foster. Licensed under CC BY-NC 4.0.
 # v6 - Ubuntu version - uses xdotool for text output, requires sudo for keyboard module
 # v6 adds: dynamic mappings loaded from JSON files
 
@@ -301,7 +301,7 @@ def process_and_validate_text(raw_text):
         text = text.rstrip('.!?,;:')
     elif not text.endswith(('.', '!', '?')):
         text += '.'
-    print(f"DEBUG: Final processed text: '{text}'")
+    print(f"INFO: Final processed text: '{text}'")
     return text
 
 def type_with_xdotool(text):

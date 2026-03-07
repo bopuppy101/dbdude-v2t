@@ -13,4 +13,4 @@
 ## Map Packs (bundled with app)
 `<app_directory>/maps/packs/`
 
-Example: `/Users/mike/git/macos-v2t/maps/packs/`
+Example: `/Users/<username>/git/dbdude-v2t/macos/maps/packs/`
