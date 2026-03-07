@@ -10,4 +10,4 @@ ctranslate2
 regex
 pystray
 Pillow
-PySide6
+PySide6>=6.8.0,<6.9.0
