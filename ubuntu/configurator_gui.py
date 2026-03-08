@@ -372,12 +372,13 @@ class ConfiguratorDialog(QDialog):
         scroll_layout.setContentsMargins(8, 20, 8, 8)
 
         self.device_group = QButtonGroup(self)
-        self.device_group.buttonClicked.connect(self._on_setting_changed)
+        self._device_clicked = False
+        self.device_group.buttonClicked.connect(self._on_device_clicked)
 
         saved_device = self.settings.get("device")
         default_idx = None
         for dev in self.input_devices:
-            if saved_device and saved_device.lower() in dev['name'].lower():
+            if saved_device and saved_device == dev['name']:
                 default_idx = dev['index']
                 break
             if dev['is_default'] and default_idx is None:
@@ -453,27 +454,45 @@ class ConfiguratorDialog(QDialog):
                     return dev['name']
         return None
 
+    def _on_device_clicked(self, *args):
+        """Called when user clicks a microphone radio button."""
+        self._device_clicked = True
+        self._on_setting_changed()
+
     def _on_setting_changed(self, *args):
         """Auto-save when any setting changes."""
         if self._loading:
             return
 
         old_device = self.settings.get('device')
-        new_device = self.get_selected_device_name()
+        old_model = self.settings.get('model')
+        new_model = self.model_combo.currentText()
+
+        # Only update device if user actually clicked a mic radio button
+        if self._device_clicked:
+            new_device = self.get_selected_device_name()
+        else:
+            new_device = old_device
 
         self.settings = {
-            'model': self.model_combo.currentText(),
+            'model': new_model,
             'language': self.get_language_code(),
             'log': self.log_checkbox.isChecked(),
             'device': new_device,
         }
         save_settings(self.settings)
 
-        # Show restart message if microphone changed
-        if old_device != new_device:
+        # Show restart message if device or model changed
+        changed = []
+        if self._device_clicked and old_device != new_device:
+            changed.append("Microphone")
+        if old_model != new_model:
+            changed.append("Model")
+        if changed:
+            what = " and ".join(changed)
             QMessageBox.information(self, "Restart Required",
-                "Microphone change requires a restart.\n\n"
-                "Please restart dbdude-v2t for the new microphone to take effect.")
+                f"{what} change requires a restart.\n\n"
+                "Please restart dbdude-v2t for the change to take effect.")
 
     def on_restart(self):
         """Restart dbdude-v2t application."""

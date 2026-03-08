@@ -26,9 +26,9 @@ from scipy.signal import resample
 from faster_whisper import WhisperModel
 import ctranslate2
 from PySide6.QtWidgets import (QApplication, QSystemTrayIcon, QMenu, QMessageBox,
-    QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel)
+    QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel, QWidget)
 from PySide6.QtGui import QIcon, QAction, QFont
-from PySide6.QtCore import QTimer, QFileSystemWatcher
+from PySide6.QtCore import QTimer, QFileSystemWatcher, Signal, QObject, Qt
 
 # --- Command-line Arguments ---
 VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'large-v2', 'large-v3']
@@ -36,7 +36,10 @@ parser = argparse.ArgumentParser(description='Voice-to-text transcription with h
 parser.add_argument('--log', action='store_true', help='Enable logging transcriptions to ~/logs')
 parser.add_argument('--no-log', action='store_true', help='Disable logging (overrides settings)')
 parser.add_argument('--model', choices=VALID_MODELS, default=None, help='Whisper model size (default: from settings or base)')
+parser.add_argument('--debug', action='store_true', help='Enable debug output for mapping steps')
 args = parser.parse_args()
+
+_DEBUG_MODE = args.debug
 
 # Load settings from configurator
 def _load_settings():
@@ -260,6 +263,8 @@ def apply_wildcard_mappings(text):
             if match:
                 text = compiled.sub(replacement, text, count=1)
                 text_lower = text.lower()
+                if _DEBUG_MODE:
+                    print(f"DEBUG: Wildcard '{pattern}' matched, replaced with '{replacement}'", file=sys.stderr)
         except regex.error as e:
             print(f"WARNING: Invalid wildcard pattern '{pattern}': {e}", file=sys.stderr)
 
@@ -270,7 +275,13 @@ def replace_misheard_names(text):
     """Apply name mappings to text."""
     if NAME_RE is None:
         return text
-    return NAME_RE.sub(lambda m: NAME_MAP[m.group(1).lower()], text)
+    def _replace_and_log(m):
+        from_text = m.group(1)
+        to_text = NAME_MAP[from_text.lower()]
+        if _DEBUG_MODE:
+            print(f"DEBUG: Mapping '{from_text}' → '{to_text}'", file=sys.stderr)
+        return to_text
+    return NAME_RE.sub(_replace_and_log, text)
 
 
 def strip_trailing_period_if_symbol_map(text):
@@ -283,16 +294,22 @@ def strip_trailing_period_if_symbol_map(text):
     # Check Punctuation map
     for value in PUNCTUATION_MAP.values():
         if text_without_period.endswith(value):
+            if _DEBUG_MODE:
+                print(f"DEBUG: Stripped trailing period - text ends with Punctuation map value '{value}'", file=sys.stderr)
             return text_without_period
 
     # Check Programmer map
     for value in PROGRAMMER_MAP.values():
         if text_without_period.endswith(value):
+            if _DEBUG_MODE:
+                print(f"DEBUG: Stripped trailing period - text ends with Programmer map value '{value}'", file=sys.stderr)
             return text_without_period
 
     # Check Custom Symbol map
     for value in CUSTOM_SYMBOL_MAP.values():
         if text_without_period.endswith(value):
+            if _DEBUG_MODE:
+                print(f"DEBUG: Stripped trailing period - text ends with Custom Symbol map value '{value}'", file=sys.stderr)
             return text_without_period
 
     return text
@@ -346,10 +363,20 @@ def process_and_validate_text(raw_text):
     if not raw_text or len(raw_text.strip()) < MIN_TRANSCRIPTION_LENGTH:
         return None
     text = regex.sub(r"\s+", ' ', raw_text).strip()
+    if _DEBUG_MODE:
+        print(f"DEBUG: After dedupe_spaces: '{text}'", file=sys.stderr)
     text = replace_spoken_email(text)
+    if _DEBUG_MODE:
+        print(f"DEBUG: After email: '{text}'", file=sys.stderr)
     text = replace_misheard_names(text)  # Applies all mappings (packs + custom)
+    if _DEBUG_MODE:
+        print(f"DEBUG: After names: '{text}'", file=sys.stderr)
     text = apply_wildcard_mappings(text)  # Apply SQL-92 wildcard patterns
+    if _DEBUG_MODE:
+        print(f"DEBUG: After wildcards: '{text}'", file=sys.stderr)
     text = strip_trailing_period_if_symbol_map(text)  # Remove period if ends with symbol
+    if _DEBUG_MODE:
+        print(f"DEBUG: After strip_period: '{text}'", file=sys.stderr)
     text = regex.sub(r"\s+([#?!])", r"\1", text)  # Remove space before punctuation
     # Count words - if 3 or fewer, strip trailing punctuation (likely an edit/insertion)
     word_count = len(text.split())
@@ -412,7 +439,9 @@ def process_and_output(buffer_list):
     try:
         segments, info = model.transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=None, task='transcribe')
         raw = ' '.join(seg.text for seg in segments)
+        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Transcribed: {raw.strip()}")
         final = process_and_validate_text(raw)
+        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Mapped to:   {final}")
 
         if final:
             type_with_xdotool(final + ' ')
@@ -485,6 +514,95 @@ def continuous_toggle_pressed():
     """Check if Ctrl+Shift+Space is pressed."""
     return keyboard.is_pressed('ctrl') and keyboard.is_pressed('shift') and keyboard.is_pressed('space')
 
+# --- Console Window ---
+
+class _ConsoleBridge(QObject):
+    """Bridge to send text from any thread to the console window via Qt signal."""
+    append_text = Signal(str)
+
+class ConsoleWindow(QWidget):
+    """Live console window that captures stdout/stderr output."""
+
+    # Signal emitted when window is hidden (by X button, Hide button, or hide() call)
+    visibility_changed = Signal(bool)
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("dbdude-v2t - Console")
+        self.setWindowFlags(self.windowFlags() | Qt.Window)
+        self.setMinimumSize(700, 450)
+        self.resize(700, 450)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+
+        self.text_edit = QTextEdit()
+        self.text_edit.setReadOnly(True)
+        self.text_edit.setFont(QFont("monospace", 9))
+        self.text_edit.setLineWrapMode(QTextEdit.NoWrap)
+        layout.addWidget(self.text_edit)
+
+        btn_layout = QHBoxLayout()
+        clear_btn = QPushButton("Clear")
+        clear_btn.clicked.connect(self.text_edit.clear)
+        btn_layout.addWidget(clear_btn)
+        btn_layout.addStretch()
+        hide_btn = QPushButton("Hide")
+        hide_btn.clicked.connect(self._do_hide)
+        btn_layout.addWidget(hide_btn)
+        layout.addLayout(btn_layout)
+
+        # Bridge for thread-safe appending
+        self._bridge = _ConsoleBridge()
+        self._bridge.append_text.connect(self._append)
+
+    def _do_hide(self):
+        self.hide()
+        self.visibility_changed.emit(False)
+
+    def closeEvent(self, event):
+        """Intercept window close (X button) — just hide, don't destroy."""
+        event.ignore()
+        self.hide()
+        self.visibility_changed.emit(False)
+
+    def _append(self, text):
+        from PySide6.QtGui import QTextCursor
+        self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+        self.text_edit.insertPlainText(text)
+        self.text_edit.moveCursor(QTextCursor.MoveOperation.End)
+
+    def write_from_any_thread(self, text):
+        """Thread-safe write — emits signal to append on GUI thread."""
+        self._bridge.append_text.emit(text)
+
+class _ConsoleWriter:
+    """Redirects writes to both the original stream and the console window."""
+
+    def __init__(self, original, console_window):
+        self._original = original
+        self._console = console_window
+        self.encoding = getattr(original, 'encoding', 'utf-8')
+        self.errors = getattr(original, 'errors', 'strict')
+
+    def write(self, text):
+        if self._original:
+            self._original.write(text)
+            self._original.flush()
+        if self._console:
+            self._console.write_from_any_thread(text)
+
+    def flush(self):
+        if self._original:
+            self._original.flush()
+
+    def fileno(self):
+        return self._original.fileno()
+
+    def isatty(self):
+        return self._original.isatty() if self._original else False
+
 # --- System Tray Application ---
 
 class DbdudeV2tApp:
@@ -499,6 +617,12 @@ class DbdudeV2tApp:
         # Create Qt application
         self.app = QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
+
+        # Create console window and redirect stdout/stderr to it
+        self.console_window = ConsoleWindow()
+        self.console_window.visibility_changed.connect(self._on_console_visibility)
+        sys.stdout = _ConsoleWriter(sys.stdout, self.console_window)
+        sys.stderr = _ConsoleWriter(sys.stderr, self.console_window)
 
         # Create system tray icon
         self.tray = QSystemTrayIcon()
@@ -532,6 +656,11 @@ class DbdudeV2tApp:
         self.status_action.setEnabled(False)
         menu.addAction(self.status_action)
 
+        # Model display
+        model_action = QAction(f"Model: {MODEL_NAME}", menu)
+        model_action.setEnabled(False)
+        menu.addAction(model_action)
+
         menu.addSeparator()
 
         # Main actions
@@ -540,6 +669,9 @@ class DbdudeV2tApp:
 
         menu.addSeparator()
 
+        self.console_action = QAction("Show Console", menu)
+        self.console_action.triggered.connect(self._toggle_console)
+        menu.addAction(self.console_action)
         menu.addAction("Show Log Window", self._show_log_window)
         menu.addAction("Open Mapping/Rules", self._open_mapping_rules)
         menu.addAction("Open Logs Folder", self._open_logs)
@@ -634,6 +766,21 @@ class DbdudeV2tApp:
         self._update_status("Idle")
 
     # --- Menu Actions ---
+
+    def _toggle_console(self):
+        """Toggle console window visibility."""
+        if self.console_window.isVisible():
+            self.console_window.hide()
+            self.console_action.setText("Show Console")
+        else:
+            self.console_window.show()
+            self.console_window.raise_()
+            self.console_window.activateWindow()
+            self.console_action.setText("Hide Console")
+
+    def _on_console_visibility(self, visible):
+        """Called when console window visibility changes (from Hide button or X button)."""
+        self.console_action.setText("Hide Console" if visible else "Show Console")
 
     def _show_configurator(self):
         """Launch the configurator GUI."""
