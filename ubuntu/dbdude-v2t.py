@@ -128,6 +128,8 @@ PROGRAMMER_MAP = {}   # From Programmer pack
 CUSTOM_MAP = {}       # User custom mappings
 CUSTOM_SYMBOL_MAP = {}  # User custom mappings with strip_punctuation=true
 NAME_MAP = {}         # Combined map for regex building (all merged)
+WILDCARD_MAP = {}     # Patterns containing % or _ wildcards
+WILDCARD_MODE = "sql92"  # "none" or "sql92"
 
 # Compiled regex - built after mappings are loaded
 NAME_RE = None
@@ -135,7 +137,7 @@ NAME_RE = None
 
 def load_custom_mappings():
     """Load user custom mappings from ~/.dbdude-v2t and enabled map packs from app directory."""
-    global NAME_RE
+    global NAME_RE, WILDCARD_MODE
 
     user_data_dir = get_user_data_dir()
     maps_file = user_data_dir / "custom_mappings.json"
@@ -148,6 +150,10 @@ def load_custom_mappings():
     try:
         with open(maps_file, 'r', encoding='utf-8') as f:
             custom = json.load(f)
+
+        # Get wildcard mode
+        WILDCARD_MODE = custom.get("wildcard_mode", "sql92")
+        print(f"INFO: Wildcard mode: {WILDCARD_MODE}", file=sys.stderr)
 
         # Load enabled map packs first (so custom mappings can override them)
         enabled_packs = custom.get("enabled_packs", [])
@@ -189,14 +195,20 @@ def load_custom_mappings():
                     print(f"WARNING: Invalid mapping entry for '{key}': expected string or dict, got {type(entry).__name__}, skipping", file=sys.stderr)
                     continue
 
-                if strip_punctuation:
-                    CUSTOM_SYMBOL_MAP[key_lower] = actual_value
+                if WILDCARD_MODE == "sql92" and ('%' in key_lower or '_' in key_lower):
+                    WILDCARD_MAP[key_lower] = actual_value
                 else:
-                    CUSTOM_MAP[key_lower] = actual_value
-                NAME_MAP[key_lower] = actual_value
+                    if strip_punctuation:
+                        CUSTOM_SYMBOL_MAP[key_lower] = actual_value
+                    else:
+                        CUSTOM_MAP[key_lower] = actual_value
+                    NAME_MAP[key_lower] = actual_value
             except Exception as e:
                 print(f"WARNING: Error processing mapping '{key}': {e}, skipping", file=sys.stderr)
                 continue
+
+        if WILDCARD_MAP:
+            print(f"INFO: Loaded {len(WILDCARD_MAP)} wildcard pattern(s)", file=sys.stderr)
 
         print(f"INFO: Loaded custom mappings from {maps_file}", file=sys.stderr)
         print(f"INFO: Maps loaded - Punctuation: {len(PUNCTUATION_MAP)}, Programmer: {len(PROGRAMMER_MAP)}, Custom: {len(CUSTOM_MAP)}, Custom-Symbol: {len(CUSTOM_SYMBOL_MAP)}", file=sys.stderr)
@@ -209,6 +221,49 @@ def load_custom_mappings():
     # Build compiled regex after all mappings are loaded
     if NAME_MAP:
         NAME_RE = regex.compile(r"\b(" + "|".join(map(regex.escape, NAME_MAP.keys())) + r")\b", flags=regex.IGNORECASE)
+
+
+def sql92_pattern_to_regex(pattern):
+    """Convert SQL-92 LIKE pattern to regex. Each word is matched separately."""
+    pattern_words = pattern.split()
+    regex_parts = []
+    for word in pattern_words:
+        regex_word = ""
+        for char in word:
+            if char == '%':
+                regex_word += '.*'
+            elif char == '_':
+                regex_word += '.'
+            elif char in r'\.^$+?{}[]|()':
+                regex_word += '\\' + char
+            else:
+                regex_word += char
+        regex_parts.append(regex_word)
+    return r'\s+'.join(regex_parts)
+
+
+def apply_wildcard_mappings(text):
+    """Apply SQL-92 wildcard pattern mappings to text. Called after literal mappings."""
+    if not WILDCARD_MAP or WILDCARD_MODE != "sql92":
+        return text
+
+    text_lower = text.lower()
+
+    for pattern, replacement in WILDCARD_MAP.items():
+        regex_pattern = sql92_pattern_to_regex(pattern)
+
+        try:
+            full_pattern = r'\b' + regex_pattern + r'\b'
+            compiled = regex.compile(full_pattern, regex.IGNORECASE)
+
+            match = compiled.search(text_lower)
+            if match:
+                text = compiled.sub(replacement, text, count=1)
+                text_lower = text.lower()
+        except regex.error as e:
+            print(f"WARNING: Invalid wildcard pattern '{pattern}': {e}", file=sys.stderr)
+
+    return text
 
 
 def replace_misheard_names(text):
@@ -293,6 +348,7 @@ def process_and_validate_text(raw_text):
     text = regex.sub(r"\s+", ' ', raw_text).strip()
     text = replace_spoken_email(text)
     text = replace_misheard_names(text)  # Applies all mappings (packs + custom)
+    text = apply_wildcard_mappings(text)  # Apply SQL-92 wildcard patterns
     text = strip_trailing_period_if_symbol_map(text)  # Remove period if ends with symbol
     text = regex.sub(r"\s+([#?!])", r"\1", text)  # Remove space before punctuation
     # Count words - if 3 or fewer, strip trailing punctuation (likely an edit/insertion)
@@ -590,7 +646,7 @@ class DbdudeV2tApp:
 
     def _reload_mappings(self, silent=False):
         """Reload mapping files without restarting."""
-        global NAME_MAP, NAME_RE, PUNCTUATION_MAP, PROGRAMMER_MAP, CUSTOM_MAP, CUSTOM_SYMBOL_MAP
+        global NAME_MAP, NAME_RE, PUNCTUATION_MAP, PROGRAMMER_MAP, CUSTOM_MAP, CUSTOM_SYMBOL_MAP, WILDCARD_MAP
 
         # Clear existing mappings
         NAME_MAP.clear()
@@ -598,6 +654,7 @@ class DbdudeV2tApp:
         PROGRAMMER_MAP.clear()
         CUSTOM_MAP.clear()
         CUSTOM_SYMBOL_MAP.clear()
+        WILDCARD_MAP.clear()
 
         # Reload
         load_custom_mappings()

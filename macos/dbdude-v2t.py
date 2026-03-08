@@ -110,6 +110,8 @@ ui_status_queue = queue.Queue()
 # Mappings
 CUSTOM_MAP = {}
 STRIP_PUNCT_VALUES = set()  # Values that should strip trailing punctuation
+WILDCARD_MAP = {}  # Patterns containing % or _ wildcards
+WILDCARD_MODE = "sql92"  # "none" or "sql92"
 name_re = None  # Compiled regex for mappings
 
 # Rules
@@ -236,7 +238,7 @@ def apply_rules(text):
 
 def load_mappings():
     """Load custom mappings and enabled packs from user data directory."""
-    global CUSTOM_MAP, STRIP_PUNCT_VALUES, name_re
+    global CUSTOM_MAP, STRIP_PUNCT_VALUES, WILDCARD_MODE, name_re
 
     user_data_dir = get_user_data_dir()
     maps_file = user_data_dir / "custom_mappings.json"
@@ -249,6 +251,10 @@ def load_mappings():
     try:
         with open(maps_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
+
+        # Get wildcard mode
+        WILDCARD_MODE = data.get("wildcard_mode", "sql92")
+        print(f"INFO: Wildcard mode: {WILDCARD_MODE}", flush=True)
 
         # Load enabled packs first (so custom mappings can override them)
         enabled_packs = data.get("enabled_packs", [])
@@ -273,11 +279,19 @@ def load_mappings():
             if isinstance(entry, dict):
                 actual_value = entry.get("value", "")
                 strip_punctuation = entry.get("strip_punctuation", False)
+            else:
+                actual_value = entry
+                strip_punctuation = False
+
+            if WILDCARD_MODE == "sql92" and ('%' in key_lower or '_' in key_lower):
+                WILDCARD_MAP[key_lower] = actual_value
+            else:
                 CUSTOM_MAP[key_lower] = actual_value
                 if strip_punctuation:
                     STRIP_PUNCT_VALUES.add(actual_value)
-            else:
-                CUSTOM_MAP[key_lower] = entry
+
+        if WILDCARD_MAP:
+            print(f"INFO: Loaded {len(WILDCARD_MAP)} wildcard pattern(s)", flush=True)
 
         # Build regex for matching
         if CUSTOM_MAP:
@@ -291,6 +305,49 @@ def load_mappings():
 
     except Exception as e:
         print(f"WARNING: Could not load mappings: {e}", flush=True)
+
+
+def sql92_pattern_to_regex(pattern):
+    """Convert SQL-92 LIKE pattern to regex. Each word is matched separately."""
+    pattern_words = pattern.split()
+    regex_parts = []
+    for word in pattern_words:
+        regex_word = ""
+        for char in word:
+            if char == '%':
+                regex_word += '.*'
+            elif char == '_':
+                regex_word += '.'
+            elif char in r'\.^$+?{}[]|()':
+                regex_word += '\\' + char
+            else:
+                regex_word += char
+        regex_parts.append(regex_word)
+    return r'\s+'.join(regex_parts)
+
+
+def apply_wildcard_mappings(text):
+    """Apply SQL-92 wildcard pattern mappings to text. Called after literal mappings."""
+    if not WILDCARD_MAP or WILDCARD_MODE != "sql92":
+        return text
+
+    text_lower = text.lower()
+
+    for pattern, replacement in WILDCARD_MAP.items():
+        regex_pattern = sql92_pattern_to_regex(pattern)
+
+        try:
+            full_pattern = r'\b' + regex_pattern + r'\b'
+            compiled = re.compile(full_pattern, re.IGNORECASE)
+
+            match = compiled.search(text_lower)
+            if match:
+                text = compiled.sub(replacement, text, count=1)
+                text_lower = text.lower()
+        except re.error as e:
+            print(f"WARNING: Invalid wildcard pattern '{pattern}': {e}", flush=True)
+
+    return text
 
 
 def apply_mappings(text):
@@ -357,11 +414,13 @@ def transcription_worker():
                 result = mlx_whisper.transcribe(audio, path_or_hf_repo=model_name, condition_on_previous_text=False)
             transcribe_time = time.time() - transcribe_start
 
-            text = result['text'].strip()
-            text = apply_mappings(text)
-            text = apply_rules(text)
+            raw = result['text'].strip()
             print(f"Transcribed {recording_duration:.2f}s audio in {transcribe_time:.2f}s", flush=True)
-            print(f">>> {text}", flush=True)
+            print(f"Transcribed: {raw}", flush=True)
+            text = apply_mappings(raw)
+            text = apply_wildcard_mappings(text)
+            text = apply_rules(text)
+            print(f"Mapped to:   {text}", flush=True)
 
             # Type the text into the active window
             typer.type(text)
@@ -386,6 +445,7 @@ class V2TApp(rumps.App):
             rumps.MenuItem("Show Console", callback=self.on_show_console),
             rumps.MenuItem("Configurator...", callback=self.on_configurator),
             rumps.MenuItem("Mapping/Rules...", callback=self.on_mapping_rules),
+            rumps.MenuItem("Reload Mappings", callback=self.on_reload_mappings),
             None,  # separator
             rumps.MenuItem("Quit", callback=self.quit_app)
         ]
@@ -445,6 +505,17 @@ class V2TApp(rumps.App):
             except Exception as e:
                 print(f"ERROR launching mapping/rules: {e}", flush=True)
         threading.Thread(target=launch, daemon=True).start()
+
+    def on_reload_mappings(self, _):
+        """Reload custom mappings without restarting."""
+        global CUSTOM_MAP, STRIP_PUNCT_VALUES, WILDCARD_MAP, name_re
+        CUSTOM_MAP.clear()
+        STRIP_PUNCT_VALUES.clear()
+        WILDCARD_MAP.clear()
+        name_re = None
+        load_mappings()
+        count = len(CUSTOM_MAP) + len(WILDCARD_MAP)
+        print(f"INFO: Mappings reloaded ({count} active)", flush=True)
 
     def _apply_status(self, status, icon_path):
         """Actually apply status update - MUST be called on main thread."""

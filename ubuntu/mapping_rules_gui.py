@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,
     QTabWidget, QMessageBox, QHeaderView, QStyleFactory, QCheckBox,
-    QGroupBox, QScrollArea
+    QGroupBox, QScrollArea, QComboBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette, QColor
@@ -267,9 +267,30 @@ class MappingRulesWindow(QMainWindow):
         layout.setSpacing(12)
         layout.setContentsMargins(16, 16, 16, 16)
 
+        # Top row: instructions and wildcard mode
+        top_layout = QHBoxLayout()
+
         instructions = QLabel("Map spoken phrases to text replacements:")
         instructions.setStyleSheet("font-size: 14px; color: #555555; margin-bottom: 4px;")
-        layout.addWidget(instructions)
+        top_layout.addWidget(instructions)
+
+        top_layout.addStretch()
+
+        top_layout.addWidget(QLabel("Wildcard Mode:"))
+        self.wildcard_mode_combo = QComboBox()
+        self.wildcard_mode_combo.addItems(["None", "SQL-92"])
+        self.wildcard_mode_combo.setToolTip(
+            "None: Literal matching only\n"
+            "SQL-92: Use % for any chars, _ for single char"
+        )
+        # Set current value from data
+        current_mode = self.data.get("wildcard_mode", "sql92")
+        mode_map = {"none": "None", "sql92": "SQL-92"}
+        self.wildcard_mode_combo.setCurrentText(mode_map.get(current_mode, "SQL-92"))
+        self.wildcard_mode_combo.currentTextChanged.connect(self.on_wildcard_mode_change)
+        top_layout.addWidget(self.wildcard_mode_combo)
+
+        layout.addLayout(top_layout)
 
         # Table
         self.table = QTableWidget()
@@ -498,6 +519,12 @@ class MappingRulesWindow(QMainWindow):
             self.replacement_entry.clear()
             self.strip_checkbox.setChecked(False)
             self._save_mappings()
+
+    def on_wildcard_mode_change(self, text):
+        """Handle wildcard mode dropdown change."""
+        mode_map = {"None": "none", "SQL-92": "sql92"}
+        self.data["wildcard_mode"] = mode_map.get(text, "sql92")
+        save_mappings(self.data)
 
 
 def show_mapping_rules():

@@ -316,15 +316,14 @@ class MappingRulesWindow(QMainWindow):
 
         top_layout.addWidget(QLabel("Wildcard Mode:"))
         self.wildcard_mode_combo = QComboBox()
-        self.wildcard_mode_combo.addItems(["None", "SQL-92", "Regex"])
+        self.wildcard_mode_combo.addItems(["None", "SQL-92"])
         self.wildcard_mode_combo.setToolTip(
             "None: Literal matching only\n"
-            "SQL-92: Use % for any chars, _ for single char\n"
-            "Regex: Full regular expression patterns"
+            "SQL-92: Use % for any chars, _ for single char"
         )
         # Set current value from data
         current_mode = self.data.get("wildcard_mode", "sql92")
-        mode_map = {"none": "None", "sql92": "SQL-92", "regex": "Regex"}
+        mode_map = {"none": "None", "sql92": "SQL-92"}
         self.wildcard_mode_combo.setCurrentText(mode_map.get(current_mode, "SQL-92"))
         self.wildcard_mode_combo.currentTextChanged.connect(self.on_wildcard_mode_change)
         top_layout.addWidget(self.wildcard_mode_combo)
@@ -583,7 +582,7 @@ class MappingRulesWindow(QMainWindow):
 
     def on_wildcard_mode_change(self, text):
         """Handle wildcard mode dropdown change."""
-        mode_map = {"None": "none", "SQL-92": "sql92", "Regex": "regex"}
+        mode_map = {"None": "none", "SQL-92": "sql92"}
         self.data["wildcard_mode"] = mode_map.get(text, "sql92")
         save_mappings(self.data)
 

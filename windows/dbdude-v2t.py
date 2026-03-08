@@ -325,20 +325,10 @@ CUSTOM_SYMBOL_MAP = {}  # User custom mappings marked as "strip trailing punctua
 NAME_MAP = {}         # Combined map for regex building (all merged)
 
 WILDCARD_MAP = {}  # Patterns containing % or _ wildcards
-WILDCARD_MODE = "sql92"  # "none", "sql92", or "regex"
+WILDCARD_MODE = "sql92"  # "none" or "sql92"
 RULES = []  # List of user-defined formatting rules
 WHITESPACE_STRIP_MAP = {}  # Maps replacement value to (strip_before, strip_after) tuple
 name_re = None  # Compiled regex for name/mapping matching
-
-
-def is_wildcard_pattern(key, mode):
-    """Check if a mapping key contains wildcard characters based on the mode."""
-    if mode == "sql92":
-        return '%' in key or '_' in key
-    elif mode == "regex":
-        # Common regex metacharacters that indicate a pattern
-        return any(c in key for c in r'.*+?^$[]{}|()\/')
-    return False
 
 
 def build_pattern(key):
@@ -440,7 +430,7 @@ def load_custom_mappings():
                     print(f"WARNING: Invalid mapping entry for '{key}': expected string or dict, got {type(entry).__name__}, skipping", file=sys.stderr)
                     continue
 
-                if WILDCARD_MODE != "none" and is_wildcard_pattern(key_lower, WILDCARD_MODE):
+                if WILDCARD_MODE == "sql92" and ('%' in key_lower or '_' in key_lower):
                     WILDCARD_MAP[key_lower] = actual_value
                 else:
                     if strip_punctuation:
@@ -671,19 +661,14 @@ def sql92_pattern_to_regex(pattern):
 
 
 def apply_wildcard_mappings(text):
-    """Apply wildcard pattern mappings to text. Called after literal mappings."""
-    if not WILDCARD_MAP or WILDCARD_MODE == "none":
+    """Apply SQL-92 wildcard pattern mappings to text. Called after literal mappings."""
+    if not WILDCARD_MAP or WILDCARD_MODE != "sql92":
         return text
 
     text_lower = text.lower()
 
     for pattern, replacement in WILDCARD_MAP.items():
-        if WILDCARD_MODE == "sql92":
-            regex_pattern = sql92_pattern_to_regex(pattern)
-        elif WILDCARD_MODE == "regex":
-            regex_pattern = pattern
-        else:
-            continue
+        regex_pattern = sql92_pattern_to_regex(pattern)
 
         try:
             # Use word boundaries to match whole phrases
@@ -866,12 +851,13 @@ class SystrayManager:
 
     def _reload_mappings(self, icon=None, item=None):
         """Reload mapping files without restarting."""
-        global PUNCTUATION_MAP, PROGRAMMER_MAP, CUSTOM_MAP, CUSTOM_SYMBOL_MAP, NAME_MAP
+        global PUNCTUATION_MAP, PROGRAMMER_MAP, CUSTOM_MAP, CUSTOM_SYMBOL_MAP, NAME_MAP, WILDCARD_MAP
         PUNCTUATION_MAP.clear()
         PROGRAMMER_MAP.clear()
         CUSTOM_MAP.clear()
         CUSTOM_SYMBOL_MAP.clear()
         NAME_MAP.clear()
+        WILDCARD_MAP.clear()
         load_custom_mappings()
         build_name_re()
         count = len(NAME_MAP)
