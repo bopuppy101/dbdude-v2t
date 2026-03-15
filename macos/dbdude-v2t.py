@@ -110,6 +110,7 @@ ui_status_queue = queue.Queue()
 # Mappings
 CUSTOM_MAP = {}
 STRIP_PUNCT_VALUES = set()  # Values that should strip trailing punctuation
+CONCAT_NEXT_VALUES = set()  # Values that should concatenate with the next word (no space)
 WILDCARD_MAP = {}  # Patterns containing % or _ wildcards
 WILDCARD_MODE = "sql92"  # "none" or "sql92"
 name_re = None  # Compiled regex for mappings
@@ -238,7 +239,7 @@ def apply_rules(text):
 
 def load_mappings():
     """Load custom mappings and enabled packs from user data directory."""
-    global CUSTOM_MAP, STRIP_PUNCT_VALUES, WILDCARD_MODE, name_re
+    global CUSTOM_MAP, STRIP_PUNCT_VALUES, CONCAT_NEXT_VALUES, WILDCARD_MODE, name_re
 
     user_data_dir = get_user_data_dir()
     maps_file = user_data_dir / "custom_mappings.json"
@@ -279,9 +280,11 @@ def load_mappings():
             if isinstance(entry, dict):
                 actual_value = entry.get("value", "")
                 strip_punctuation = entry.get("strip_punctuation", False)
+                concatenate_next = entry.get("concatenate_next", False)
             else:
                 actual_value = entry
                 strip_punctuation = False
+                concatenate_next = False
 
             if WILDCARD_MODE == "sql92" and ('%' in key_lower or '_' in key_lower):
                 WILDCARD_MAP[key_lower] = actual_value
@@ -289,6 +292,8 @@ def load_mappings():
                 CUSTOM_MAP[key_lower] = actual_value
                 if strip_punctuation:
                     STRIP_PUNCT_VALUES.add(actual_value)
+                if concatenate_next:
+                    CONCAT_NEXT_VALUES.add(actual_value)
 
         if WILDCARD_MAP:
             print(f"INFO: Loaded {len(WILDCARD_MAP)} wildcard pattern(s)", flush=True)
@@ -356,6 +361,10 @@ def apply_mappings(text):
         return text
 
     text = name_re.sub(lambda m: CUSTOM_MAP[m.group(1).lower()], text)
+
+    # Concatenate: strip space after values marked with concatenate_next
+    for val in CONCAT_NEXT_VALUES:
+        text = text.replace(val + " ", val)
 
     # Strip trailing punctuation if text ends with a strip_punct value
     if STRIP_PUNCT_VALUES:
@@ -511,6 +520,7 @@ class V2TApp(rumps.App):
         global CUSTOM_MAP, STRIP_PUNCT_VALUES, WILDCARD_MAP, name_re
         CUSTOM_MAP.clear()
         STRIP_PUNCT_VALUES.clear()
+        CONCAT_NEXT_VALUES.clear()
         WILDCARD_MAP.clear()
         name_re = None
         load_mappings()

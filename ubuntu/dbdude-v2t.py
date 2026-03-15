@@ -130,6 +130,7 @@ PUNCTUATION_MAP = {}  # From Punctuation pack
 PROGRAMMER_MAP = {}   # From Programmer pack
 CUSTOM_MAP = {}       # User custom mappings
 CUSTOM_SYMBOL_MAP = {}  # User custom mappings with strip_punctuation=true
+CONCAT_NEXT_VALUES = set()  # Values that should concatenate with the next word (no space)
 NAME_MAP = {}         # Combined map for regex building (all merged)
 WILDCARD_MAP = {}     # Patterns containing % or _ wildcards
 WILDCARD_MODE = "sql92"  # "none" or "sql92"
@@ -188,12 +189,14 @@ def load_custom_mappings():
                 if isinstance(entry, dict):
                     actual_value = entry.get("value", "")
                     strip_punctuation = entry.get("strip_punctuation", False)
+                    concatenate_next = entry.get("concatenate_next", False)
                     if not isinstance(actual_value, str):
                         print(f"WARNING: Invalid mapping entry for '{key}': 'value' must be a string, skipping", file=sys.stderr)
                         continue
                 elif isinstance(entry, str):
                     actual_value = entry
                     strip_punctuation = False
+                    concatenate_next = False
                 else:
                     print(f"WARNING: Invalid mapping entry for '{key}': expected string or dict, got {type(entry).__name__}, skipping", file=sys.stderr)
                     continue
@@ -206,6 +209,8 @@ def load_custom_mappings():
                     else:
                         CUSTOM_MAP[key_lower] = actual_value
                     NAME_MAP[key_lower] = actual_value
+                    if concatenate_next:
+                        CONCAT_NEXT_VALUES.add(actual_value)
             except Exception as e:
                 print(f"WARNING: Error processing mapping '{key}': {e}, skipping", file=sys.stderr)
                 continue
@@ -371,6 +376,11 @@ def process_and_validate_text(raw_text):
     text = replace_misheard_names(text)  # Applies all mappings (packs + custom)
     if _DEBUG_MODE:
         print(f"DEBUG: After names: '{text}'", file=sys.stderr)
+    # Concatenate: strip space after values marked with concatenate_next
+    for val in CONCAT_NEXT_VALUES:
+        text = text.replace(val + " ", val)
+    if _DEBUG_MODE and CONCAT_NEXT_VALUES:
+        print(f"DEBUG: After concat_next: '{text}'", file=sys.stderr)
     text = apply_wildcard_mappings(text)  # Apply SQL-92 wildcard patterns
     if _DEBUG_MODE:
         print(f"DEBUG: After wildcards: '{text}'", file=sys.stderr)
@@ -793,7 +803,7 @@ class DbdudeV2tApp:
 
     def _reload_mappings(self, silent=False):
         """Reload mapping files without restarting."""
-        global NAME_MAP, NAME_RE, PUNCTUATION_MAP, PROGRAMMER_MAP, CUSTOM_MAP, CUSTOM_SYMBOL_MAP, WILDCARD_MAP
+        global NAME_MAP, NAME_RE, PUNCTUATION_MAP, PROGRAMMER_MAP, CUSTOM_MAP, CUSTOM_SYMBOL_MAP, CONCAT_NEXT_VALUES, WILDCARD_MAP
 
         # Clear existing mappings
         NAME_MAP.clear()
@@ -801,6 +811,7 @@ class DbdudeV2tApp:
         PROGRAMMER_MAP.clear()
         CUSTOM_MAP.clear()
         CUSTOM_SYMBOL_MAP.clear()
+        CONCAT_NEXT_VALUES.clear()
         WILDCARD_MAP.clear()
 
         # Reload
