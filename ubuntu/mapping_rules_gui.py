@@ -294,12 +294,13 @@ class MappingRulesWindow(QMainWindow):
 
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["Spoken Phrase", "Replacement", "Strip Punct", "Concat Next"])
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["Spoken Phrase", "Replacement", "Strip Punct", "Strip WS Before", "Strip WS After"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
         self.table.setAlternatingRowColors(True)
@@ -315,19 +316,24 @@ class MappingRulesWindow(QMainWindow):
             if isinstance(entry, dict):
                 replacement = entry.get("value", "")
                 strip_punct = entry.get("strip_punctuation", False)
-                concat_next = entry.get("concatenate_next", False)
+                strip_ws_before = entry.get("strip_whitespace_before", False)
+                strip_ws_after = entry.get("strip_whitespace_after", False)
             else:
                 replacement = entry
                 strip_punct = False
-                concat_next = False
+                strip_ws_before = False
+                strip_ws_after = False
 
             self.table.setItem(row, 1, QTableWidgetItem(replacement))
             strip_item = QTableWidgetItem("Yes" if strip_punct else "No")
             strip_item.setTextAlignment(Qt.AlignCenter)
             self.table.setItem(row, 2, strip_item)
-            concat_item = QTableWidgetItem("Yes" if concat_next else "No")
-            concat_item.setTextAlignment(Qt.AlignCenter)
-            self.table.setItem(row, 3, concat_item)
+            ws_before_item = QTableWidgetItem("Yes" if strip_ws_before else "No")
+            ws_before_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(row, 3, ws_before_item)
+            ws_after_item = QTableWidgetItem("Yes" if strip_ws_after else "No")
+            ws_after_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(row, 4, ws_after_item)
 
         layout.addWidget(self.table)
 
@@ -349,9 +355,13 @@ class MappingRulesWindow(QMainWindow):
         self.strip_checkbox.setToolTip("Remove trailing period after this replacement")
         entry_layout.addWidget(self.strip_checkbox)
 
-        self.concat_checkbox = QCheckBox("Concatenate to next word")
-        self.concat_checkbox.setToolTip("Remove the space between this replacement and the next word")
-        entry_layout.addWidget(self.concat_checkbox)
+        self.strip_ws_before_checkbox = QCheckBox("Strip WS before")
+        self.strip_ws_before_checkbox.setToolTip("Remove whitespace before this replacement")
+        entry_layout.addWidget(self.strip_ws_before_checkbox)
+
+        self.strip_ws_after_checkbox = QCheckBox("Strip WS after")
+        self.strip_ws_after_checkbox.setToolTip("Remove whitespace after this replacement")
+        entry_layout.addWidget(self.strip_ws_after_checkbox)
 
         layout.addLayout(entry_layout)
 
@@ -432,12 +442,14 @@ class MappingRulesWindow(QMainWindow):
             spoken_item = self.table.item(row, 0)
             replacement_item = self.table.item(row, 1)
             strip_item = self.table.item(row, 2)
-            concat_item = self.table.item(row, 3)
+            ws_before_item = self.table.item(row, 3)
+            ws_after_item = self.table.item(row, 4)
             if spoken_item and replacement_item:
                 self.spoken_entry.setText(spoken_item.text())
                 self.replacement_entry.setText(replacement_item.text())
                 self.strip_checkbox.setChecked(strip_item and strip_item.text() == "Yes")
-                self.concat_checkbox.setChecked(concat_item and concat_item.text() == "Yes")
+                self.strip_ws_before_checkbox.setChecked(ws_before_item and ws_before_item.text() == "Yes")
+                self.strip_ws_after_checkbox.setChecked(ws_after_item and ws_after_item.text() == "Yes")
 
     def _save_mappings(self):
         """Save current mappings to file."""
@@ -446,20 +458,24 @@ class MappingRulesWindow(QMainWindow):
             spoken_item = self.table.item(row, 0)
             replacement_item = self.table.item(row, 1)
             strip_item = self.table.item(row, 2)
-            concat_item = self.table.item(row, 3)
+            ws_before_item = self.table.item(row, 3)
+            ws_after_item = self.table.item(row, 4)
 
             if spoken_item and replacement_item:
                 spoken = spoken_item.text()
                 replacement = replacement_item.text()
                 strip_punct = strip_item and strip_item.text() == "Yes"
-                concat_next = concat_item and concat_item.text() == "Yes"
+                strip_ws_before = ws_before_item and ws_before_item.text() == "Yes"
+                strip_ws_after = ws_after_item and ws_after_item.text() == "Yes"
 
-                if strip_punct or concat_next:
+                if strip_punct or strip_ws_before or strip_ws_after:
                     entry = {"value": replacement}
                     if strip_punct:
                         entry["strip_punctuation"] = True
-                    if concat_next:
-                        entry["concatenate_next"] = True
+                    if strip_ws_before:
+                        entry["strip_whitespace_before"] = True
+                    if strip_ws_after:
+                        entry["strip_whitespace_after"] = True
                     names[spoken] = entry
                 else:
                     names[spoken] = replacement
@@ -472,7 +488,8 @@ class MappingRulesWindow(QMainWindow):
         spoken = self.spoken_entry.text().strip()
         replacement = self.replacement_entry.text().strip()
         strip_punct = self.strip_checkbox.isChecked()
-        concat_next = self.concat_checkbox.isChecked()
+        strip_ws_before = self.strip_ws_before_checkbox.isChecked()
+        strip_ws_after = self.strip_ws_after_checkbox.isChecked()
 
         if not spoken or not replacement:
             QMessageBox.warning(self, "Warning", "Both fields are required")
@@ -494,14 +511,18 @@ class MappingRulesWindow(QMainWindow):
         strip_item = QTableWidgetItem("Yes" if strip_punct else "No")
         strip_item.setTextAlignment(Qt.AlignCenter)
         self.table.setItem(row, 2, strip_item)
-        concat_item = QTableWidgetItem("Yes" if concat_next else "No")
-        concat_item.setTextAlignment(Qt.AlignCenter)
-        self.table.setItem(row, 3, concat_item)
+        ws_before_item = QTableWidgetItem("Yes" if strip_ws_before else "No")
+        ws_before_item.setTextAlignment(Qt.AlignCenter)
+        self.table.setItem(row, 3, ws_before_item)
+        ws_after_item = QTableWidgetItem("Yes" if strip_ws_after else "No")
+        ws_after_item.setTextAlignment(Qt.AlignCenter)
+        self.table.setItem(row, 4, ws_after_item)
 
         self.spoken_entry.clear()
         self.replacement_entry.clear()
         self.strip_checkbox.setChecked(False)
-        self.concat_checkbox.setChecked(False)
+        self.strip_ws_before_checkbox.setChecked(False)
+        self.strip_ws_after_checkbox.setChecked(False)
         self._save_mappings()
 
     def update_mapping(self):
@@ -514,7 +535,8 @@ class MappingRulesWindow(QMainWindow):
         spoken = self.spoken_entry.text().strip()
         replacement = self.replacement_entry.text().strip()
         strip_punct = self.strip_checkbox.isChecked()
-        concat_next = self.concat_checkbox.isChecked()
+        strip_ws_before = self.strip_ws_before_checkbox.isChecked()
+        strip_ws_after = self.strip_ws_after_checkbox.isChecked()
 
         if not spoken or not replacement:
             QMessageBox.warning(self, "Warning", "Both fields are required")
@@ -526,9 +548,12 @@ class MappingRulesWindow(QMainWindow):
         strip_item = QTableWidgetItem("Yes" if strip_punct else "No")
         strip_item.setTextAlignment(Qt.AlignCenter)
         self.table.setItem(row, 2, strip_item)
-        concat_item = QTableWidgetItem("Yes" if concat_next else "No")
-        concat_item.setTextAlignment(Qt.AlignCenter)
-        self.table.setItem(row, 3, concat_item)
+        ws_before_item = QTableWidgetItem("Yes" if strip_ws_before else "No")
+        ws_before_item.setTextAlignment(Qt.AlignCenter)
+        self.table.setItem(row, 3, ws_before_item)
+        ws_after_item = QTableWidgetItem("Yes" if strip_ws_after else "No")
+        ws_after_item.setTextAlignment(Qt.AlignCenter)
+        self.table.setItem(row, 4, ws_after_item)
         self._save_mappings()
 
     def delete_mapping(self):
@@ -546,7 +571,8 @@ class MappingRulesWindow(QMainWindow):
             self.spoken_entry.clear()
             self.replacement_entry.clear()
             self.strip_checkbox.setChecked(False)
-            self.concat_checkbox.setChecked(False)
+            self.strip_ws_before_checkbox.setChecked(False)
+            self.strip_ws_after_checkbox.setChecked(False)
             self._save_mappings()
 
     def on_wildcard_mode_change(self, text):

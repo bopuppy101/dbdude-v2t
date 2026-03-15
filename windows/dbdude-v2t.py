@@ -415,7 +415,7 @@ def load_custom_mappings():
                     actual_value = entry.get("value", "")
                     strip_punctuation = entry.get("strip_punctuation", False)
                     strip_ws_before = entry.get("strip_whitespace_before", False)
-                    strip_ws_after = entry.get("strip_whitespace_after", False) or entry.get("concatenate_next", False)
+                    strip_ws_after = entry.get("strip_whitespace_after", False)
                     if not isinstance(actual_value, str):
                         print(f"WARNING: Invalid mapping entry for '{key}': 'value' must be a string, skipping", file=sys.stderr)
                         continue

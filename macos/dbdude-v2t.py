@@ -110,7 +110,7 @@ ui_status_queue = queue.Queue()
 # Mappings
 CUSTOM_MAP = {}
 STRIP_PUNCT_VALUES = set()  # Values that should strip trailing punctuation
-CONCAT_NEXT_VALUES = set()  # Values that should concatenate with the next word (no space)
+WHITESPACE_STRIP_MAP = {}  # Maps replacement value to (strip_before, strip_after) tuple
 WILDCARD_MAP = {}  # Patterns containing % or _ wildcards
 WILDCARD_MODE = "sql92"  # "none" or "sql92"
 name_re = None  # Compiled regex for mappings
@@ -239,7 +239,7 @@ def apply_rules(text):
 
 def load_mappings():
     """Load custom mappings and enabled packs from user data directory."""
-    global CUSTOM_MAP, STRIP_PUNCT_VALUES, CONCAT_NEXT_VALUES, WILDCARD_MODE, name_re
+    global CUSTOM_MAP, STRIP_PUNCT_VALUES, WHITESPACE_STRIP_MAP, WILDCARD_MODE, name_re
 
     user_data_dir = get_user_data_dir()
     maps_file = user_data_dir / "custom_mappings.json"
@@ -280,11 +280,13 @@ def load_mappings():
             if isinstance(entry, dict):
                 actual_value = entry.get("value", "")
                 strip_punctuation = entry.get("strip_punctuation", False)
-                concatenate_next = entry.get("concatenate_next", False)
+                strip_ws_before = entry.get("strip_whitespace_before", False)
+                strip_ws_after = entry.get("strip_whitespace_after", False)
             else:
                 actual_value = entry
                 strip_punctuation = False
-                concatenate_next = False
+                strip_ws_before = False
+                strip_ws_after = False
 
             if WILDCARD_MODE == "sql92" and ('%' in key_lower or '_' in key_lower):
                 WILDCARD_MAP[key_lower] = actual_value
@@ -292,8 +294,8 @@ def load_mappings():
                 CUSTOM_MAP[key_lower] = actual_value
                 if strip_punctuation:
                     STRIP_PUNCT_VALUES.add(actual_value)
-                if concatenate_next:
-                    CONCAT_NEXT_VALUES.add(actual_value)
+                if strip_ws_before or strip_ws_after:
+                    WHITESPACE_STRIP_MAP[actual_value] = (strip_ws_before, strip_ws_after)
 
         if WILDCARD_MAP:
             print(f"INFO: Loaded {len(WILDCARD_MAP)} wildcard pattern(s)", flush=True)
@@ -360,11 +362,19 @@ def apply_mappings(text):
     if not name_re or not CUSTOM_MAP:
         return text
 
-    text = name_re.sub(lambda m: CUSTOM_MAP[m.group(1).lower()], text)
+    STRIP_BEFORE = '\x01'
+    STRIP_AFTER = '\x02'
 
-    # Concatenate: strip space after values marked with concatenate_next
-    for val in CONCAT_NEXT_VALUES:
-        text = text.replace(val + " ", val)
+    def _replace(m):
+        to_text = CUSTOM_MAP[m.group(1).lower()]
+        strip_before, strip_after = WHITESPACE_STRIP_MAP.get(to_text, (False, False))
+        prefix = STRIP_BEFORE if strip_before else ''
+        suffix = STRIP_AFTER if strip_after else ''
+        return prefix + to_text + suffix
+
+    text = name_re.sub(_replace, text)
+    text = re.sub(r'\s*\x01', '', text)
+    text = re.sub(r'\x02\s*', '', text)
 
     # Strip trailing punctuation if text ends with a strip_punct value
     if STRIP_PUNCT_VALUES:
@@ -520,7 +530,7 @@ class V2TApp(rumps.App):
         global CUSTOM_MAP, STRIP_PUNCT_VALUES, WILDCARD_MAP, name_re
         CUSTOM_MAP.clear()
         STRIP_PUNCT_VALUES.clear()
-        CONCAT_NEXT_VALUES.clear()
+        WHITESPACE_STRIP_MAP.clear()
         WILDCARD_MAP.clear()
         name_re = None
         load_mappings()
