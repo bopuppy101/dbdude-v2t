@@ -278,8 +278,13 @@ def apply_wildcard_mappings(text):
     return text
 
 
+_strip_punct_used = False  # Set True when a strip_punctuation mapping is used
+
 def replace_misheard_names(text):
     """Apply name mappings to text with marker-based whitespace stripping."""
+    global _strip_punct_used
+    _strip_punct_used = False
+
     if NAME_RE is None:
         return text
 
@@ -287,8 +292,13 @@ def replace_misheard_names(text):
     STRIP_AFTER = '\x02'
 
     def _replace_and_log(m):
+        global _strip_punct_used
         from_text = m.group(1)
         to_text = NAME_MAP[from_text.lower()]
+
+        if to_text in CUSTOM_SYMBOL_MAP.values():
+            _strip_punct_used = True
+
         strip_before, strip_after = WHITESPACE_STRIP_MAP.get(to_text, (False, False))
         prefix = STRIP_BEFORE if strip_before else ''
         suffix = STRIP_AFTER if strip_after else ''
@@ -329,6 +339,12 @@ def strip_trailing_period_if_symbol_map(text):
             if _DEBUG_MODE:
                 print(f"DEBUG: Stripped trailing period - text ends with Custom Symbol map value '{value}'", file=sys.stderr)
             return text_without_period
+
+    # If any strip_punctuation mapping was used anywhere in the text, strip trailing period
+    if _strip_punct_used:
+        if _DEBUG_MODE:
+            print(f"DEBUG: Stripped trailing period - strip_punctuation mapping was used in transcription", file=sys.stderr)
+        return text_without_period
 
     return text
 

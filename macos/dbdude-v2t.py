@@ -364,9 +364,13 @@ def apply_mappings(text):
 
     STRIP_BEFORE = '\x01'
     STRIP_AFTER = '\x02'
+    strip_punct_used = False
 
     def _replace(m):
+        nonlocal strip_punct_used
         to_text = CUSTOM_MAP[m.group(1).lower()]
+        if to_text in STRIP_PUNCT_VALUES:
+            strip_punct_used = True
         strip_before, strip_after = WHITESPACE_STRIP_MAP.get(to_text, (False, False))
         prefix = STRIP_BEFORE if strip_before else ''
         suffix = STRIP_AFTER if strip_after else ''
@@ -377,11 +381,16 @@ def apply_mappings(text):
     text = re.sub(r'\x02\s*', '', text)
 
     # Strip trailing punctuation if text ends with a strip_punct value
-    if STRIP_PUNCT_VALUES:
-        for value in STRIP_PUNCT_VALUES:
-            if text.rstrip('.!?,;:').endswith(value):
-                text = text.rstrip('.!?,;:')
-                break
+    # or if any strip_punctuation mapping was used in the transcription
+    if text.endswith('.') or text.endswith('!') or text.endswith('?') or text.endswith(',') or text.endswith(';') or text.endswith(':'):
+        stripped = text.rstrip('.!?,;:')
+        if STRIP_PUNCT_VALUES:
+            for value in STRIP_PUNCT_VALUES:
+                if stripped.endswith(value):
+                    text = stripped
+                    break
+        if strip_punct_used and text != stripped:
+            text = stripped
 
     return text
 

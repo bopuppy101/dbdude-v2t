@@ -558,8 +558,13 @@ def replace_spoken_email(text):
         return text
 
 
+_strip_punct_used = False  # Set True when a strip_punctuation mapping is used
+
 def replace_misheard_names(text, name_re):
     """Apply name mappings to text with marker-based whitespace stripping."""
+    global _strip_punct_used
+    _strip_punct_used = False
+
     if name_re is None:
         return text
 
@@ -568,8 +573,13 @@ def replace_misheard_names(text, name_re):
     STRIP_AFTER = '\x02'
 
     def replace_and_log(m):
+        global _strip_punct_used
         from_text = m.group(1)
         to_text = NAME_MAP[from_text.lower()]
+
+        # Track if a strip_punctuation mapping was used
+        if to_text in CUSTOM_SYMBOL_MAP.values():
+            _strip_punct_used = True
 
         # Check if this replacement has whitespace strip flags
         strip_before, strip_after = WHITESPACE_STRIP_MAP.get(to_text, (False, False))
@@ -634,6 +644,12 @@ def strip_trailing_period_if_symbol_map(text):
             if _DEBUG_MODE:
                 print(f"DEBUG: Stripped trailing period - text ends with Custom Symbol map value '{value}'", file=sys.stderr)
             return text_without_period
+
+    # If any strip_punctuation mapping was used anywhere in the text, strip trailing period
+    if _strip_punct_used:
+        if _DEBUG_MODE:
+            print(f"DEBUG: Stripped trailing period - strip_punctuation mapping was used in transcription", file=sys.stderr)
+        return text_without_period
 
     return text
 
