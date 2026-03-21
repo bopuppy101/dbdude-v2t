@@ -1,5 +1,7 @@
 # dbdude-v2t
 
+**Website:** https://dbdude-v2t.dbdude.net/
+
 Local, privacy-first voice-to-text for your desktop. Hold a hotkey to record, release to transcribe, and text appears at your cursor - in any application.
 
 ## Features
