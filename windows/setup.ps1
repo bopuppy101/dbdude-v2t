@@ -70,10 +70,6 @@ $shortcut.Save()
 Write-Host "Desktop shortcut created."
 
 Write-Host ""
-Write-Host "Installing v2t-push / v2t-pull aliases..."
-python3 (Join-Path $ScriptDir "..\setup-aliases.py")
-
-Write-Host ""
 Write-Host "=== Setup Complete ===" -ForegroundColor Green
 Write-Host ""
 Write-Host "To run: double-click the dbdude-v2t shortcut on your Desktop."
