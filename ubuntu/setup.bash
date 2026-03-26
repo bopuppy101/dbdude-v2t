@@ -42,6 +42,10 @@ chmod +x "${SCRIPT_DIR}/run-dbdude-v2t.bash"
 mkdir -p ~/logs
 
 echo ""
+echo "Installing v2t-push / v2t-pull aliases..."
+python3 "${SCRIPT_DIR}/../setup-aliases.py"
+
+echo ""
 echo "=== Setup Complete ==="
 echo ""
 echo "To run:"

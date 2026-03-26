@@ -29,6 +29,10 @@ pip install --upgrade pip
 pip install -r "${SCRIPT_DIR}/requirements.txt"
 
 echo ""
+echo "Installing v2t-push / v2t-pull aliases..."
+python3 "${SCRIPT_DIR}/../setup-aliases.py"
+
+echo ""
 echo "=== Setup Complete ==="
 echo ""
 echo "To run:"

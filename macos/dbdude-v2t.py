@@ -51,8 +51,12 @@ def request_microphone_permission():
             granted[0] = g
             event.set()
 
-        AVCaptureDevice.requestAccessForMediaType_completionHandler_("soun", callback)
-        event.wait(timeout=30)  # Wait up to 30 seconds for user response
+        try:
+            callback.__block_signature__ = b'v@?B'
+            AVCaptureDevice.requestAccessForMediaType_completionHandler_("soun", callback)
+            event.wait(timeout=30)  # Wait up to 30 seconds for user response
+        except TypeError:
+            print("Note: macOS will prompt for Microphone permission on first recording.", flush=True)
         if granted[0]:
             print("Microphone permission granted.", flush=True)
         else:
