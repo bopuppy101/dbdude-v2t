@@ -11,5 +11,7 @@ if [ ! -d "${SCRIPT_DIR}/venv" ]; then
     exit 1
 fi
 
+pkill -9 -f "dbdude-v2t.py" 2>/dev/null
+
 source "${SCRIPT_DIR}/venv/bin/activate"
 python3 "${SCRIPT_DIR}/dbdude-v2t.py" "$@"

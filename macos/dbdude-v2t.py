@@ -631,22 +631,27 @@ def stop_recording():
     global recording_start_time, stream
     recording_duration = time.time() - recording_start_time if recording_start_time else 0
 
-    # DON'T close the stream normally - keep it running, just stop capturing
-    # The audio_callback checks the 'recording' flag and only appends when True
-    # BUT if audio is too quiet, recycle the stream so the next recording gets a fresh one
+    # Always close the stream after each recording to prevent stale audio.
+    # Previously the stream was kept open between recordings for reuse, but
+    # macOS suspends idle CoreAudio streams after a few seconds, causing them
+    # to deliver near-silence on the next capture. Creating a fresh stream per
+    # recording adds negligible latency and guarantees live audio every time.
+    if stream:
+        try:
+            stream.stop()
+            stream.close()
+        except:
+            pass
+        stream = None
 
     if audio_data:
         audio = np.concatenate(audio_data).flatten()
         rms = np.sqrt(np.mean(audio**2))
         if rms < 0.005:
-            print(f"Audio too quiet (RMS={rms:.4f}), recycling stream", flush=True)
-            # Kill the stale stream so next recording gets a fresh one
-            try:
-                stream.stop()
-                stream.close()
-            except:
-                pass
-            stream = None
+            # RMS below threshold means the mic captured near-silence.
+            # This can happen if the Fn key was tapped without speaking,
+            # or (before the stream-per-recording fix) from a stale stream.
+            print(f"Audio too quiet (RMS={rms:.4f}), skipping", flush=True)
             if app:
                 app.set_ready()
                 print("Ready. Hold Fn to record.", flush=True)
