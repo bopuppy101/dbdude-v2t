@@ -663,18 +663,49 @@ def stop_recording():
             app.set_ready()
 
 
+def _query_fn_state(result_holder, event):
+    """Query CGEventSourceFlagsState in a separate thread to avoid blocking."""
+    flags = CGEventSourceFlagsState(kCGEventSourceStateHIDSystemState)
+    result_holder.append(flags)
+    event.set()
+
+
 def recording_control_worker():
     """Poll key state directly and handle recording start/stop.
 
     Uses CGEventSourceFlagsState to directly read current modifier state.
-    No event tap needed - just polls every 20ms.
+    No event tap needed - just polls every 20ms. The Quartz call is made in
+    a short-lived worker thread with a 200ms timeout so that if the call
+    blocks (a known macOS bug triggered by rapid Fn key presses), the
+    polling loop stays alive and retries on the next cycle.
     """
     global recording
 
+    poll_count = 0
     while not shutdown_event.is_set():
-        # Poll modifier state DIRECTLY - no event tap needed
-        flags = CGEventSourceFlagsState(kCGEventSourceStateHIDSystemState)
-        fn_held = bool(flags & kCGEventFlagMaskSecondaryFn)
+        # Query modifier state in a worker thread with timeout
+        result_holder = []
+        done_event = threading.Event()
+        worker = threading.Thread(target=_query_fn_state, args=(result_holder, done_event), daemon=True)
+        worker.start()
+
+        if done_event.wait(timeout=0.2):
+            # Call returned in time — use the result
+            flags = result_holder[0]
+            fn_held = bool(flags & kCGEventFlagMaskSecondaryFn)
+        else:
+            # Call is stuck — skip this poll cycle
+            print(f"  [poll] WARNING: CGEventSourceFlagsState blocked, skipping cycle", flush=True)
+            time.sleep(0.02)
+            continue
+
+        # Debug: log every ~2s while recording to confirm loop is alive
+        if recording:
+            poll_count += 1
+            if poll_count % 100 == 0:
+                print(f"  [poll] recording, fn_held={fn_held}, flags=0x{flags:08x}, polls={poll_count}", flush=True)
+        else:
+            poll_count = 0
 
         # Act on state
         if fn_held and not recording:
@@ -707,6 +738,30 @@ if __name__ == "__main__":
 
     # Load settings first
     load_settings()
+
+    # Enable file logging if configured
+    if SETTINGS.get('log', False):
+        log_dir = Path.home() / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / "dbdude-v2t.log"
+        import atexit
+        _log_fh = open(log_file, 'a', encoding='utf-8')
+        class _Tee:
+            """Write to both the original stream and a log file."""
+            def __init__(self, stream, log):
+                self._stream = stream
+                self._log = log
+            def write(self, msg):
+                self._stream.write(msg)
+                self._log.write(msg)
+                self._log.flush()
+            def flush(self):
+                self._stream.flush()
+                self._log.flush()
+        sys.stdout = _Tee(sys.stdout, _log_fh)
+        sys.stderr = _Tee(sys.stderr, _log_fh)
+        atexit.register(_log_fh.close)
+        print(f"Logging to {log_file}", flush=True)
 
     # Model info (from settings)
     model_name = get_model_name()

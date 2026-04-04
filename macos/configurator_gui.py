@@ -256,6 +256,17 @@ def restart_v2t():
     # Start new instance
     # For --onefile mode, use sys.argv[0] to find original exe location
     # (sys.executable and __file__ point to temp extraction folder)
+    # If logging is enabled, redirect stdout/stderr to log file instead of DEVNULL
+    settings = load_settings()
+    if settings.get('log', False):
+        log_dir = Path.home() / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_fh = open(log_dir / "dbdude-v2t.log", 'a', encoding='utf-8')
+        out_target = log_fh
+    else:
+        log_fh = None
+        out_target = subprocess.DEVNULL
+
     if getattr(sys, 'frozen', False):
         # Bundled app - find main executable in same directory
         exe_dir = Path(sys.argv[0]).resolve().parent
@@ -264,12 +275,14 @@ def restart_v2t():
             subprocess.Popen(
                 [str(v2t_path)],
                 start_new_session=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stdout=out_target,
+                stderr=out_target
             )
             print(f"Started new dbdude-v2t instance from {v2t_path}")
             return True
         else:
+            if log_fh:
+                log_fh.close()
             print(f"dbdude-v2t executable not found at {v2t_path}")
             return False
     else:
@@ -279,12 +292,14 @@ def restart_v2t():
             subprocess.Popen(
                 [sys.executable, str(v2t_path)],
                 start_new_session=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stdout=out_target,
+                stderr=out_target
             )
             print("Started new dbdude-v2t.py instance")
             return True
         else:
+            if log_fh:
+                log_fh.close()
             print(f"dbdude-v2t.py not found at {v2t_path}")
             return False
 

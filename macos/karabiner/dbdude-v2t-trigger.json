@@ -1,0 +1,21 @@
+{
+    "title": "DBDude V2T Trigger",
+    "rules": [
+        {
+            "description": "Remap Right Option to FN (for V2T trigger)",
+            "manipulators": [
+                {
+                    "type": "basic",
+                    "from": {
+                        "key_code": "right_option"
+                    },
+                    "to": [
+                        {
+                            "key_code": "fn"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
