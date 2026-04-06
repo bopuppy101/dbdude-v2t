@@ -43,6 +43,23 @@ pip install -q --upgrade pip
 pip install -q -r "${SCRIPT_DIR}/requirements.txt"
 
 echo ""
+
+# Set custom icon on .command launcher (resource fork gets stripped by git/editors)
+COMMAND_FILE="${SCRIPT_DIR}/dbdude-v2t.command"
+ICON_FILE="${SCRIPT_DIR}/icons/v2t.icns"
+if [ -f "$COMMAND_FILE" ] && [ -f "$ICON_FILE" ]; then
+    echo "Setting custom icon on dbdude-v2t.command..."
+    "${SCRIPT_DIR}/venv/bin/python3" -c "
+import Cocoa, sys
+image = Cocoa.NSImage.alloc().initWithContentsOfFile_('${ICON_FILE}')
+if image and Cocoa.NSWorkspace.sharedWorkspace().setIcon_forFile_options_(image, '${COMMAND_FILE}', 0):
+    print('Icon set successfully.')
+else:
+    print('WARNING: Could not set icon.', file=sys.stderr)
+" 2>&1 || echo "WARNING: Could not set icon (pyobjc issue)."
+fi
+
+echo ""
 echo "=== Setup Complete ==="
 echo ""
 echo "To run:"

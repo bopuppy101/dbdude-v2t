@@ -455,6 +455,7 @@ def transcription_worker():
             print(f"Mapped to:   {text}", flush=True)
 
             # Type the text into the active window
+            time.sleep(0.05)
             typer.type(text)
         except Exception as e:
             print(f"ERROR in transcription worker: {e}", flush=True)
