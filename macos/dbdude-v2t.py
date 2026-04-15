@@ -746,6 +746,26 @@ if __name__ == "__main__":
     load_rules()
     print(flush=True)
 
+    # Check Globe/FN key setting — emoji mode intercepts FN events
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['defaults', 'read', 'com.apple.HIToolbox', 'AppleFnUsageType'],
+            capture_output=True, text=True, timeout=5
+        )
+        fn_usage = result.stdout.strip()
+        fn_labels = {'0': 'Change Input Source', '1': 'Show Emoji & Symbols', '2': 'Start Dictation', '3': 'Do Nothing'}
+        fn_label = fn_labels.get(fn_usage, f'Unknown ({fn_usage})')
+        if fn_usage == '3':
+            print(f"INFO: Globe/FN key set to: {fn_label}", flush=True)
+        else:
+            print(f"WARNING: Globe/FN key may not be set to 'Do Nothing' (detected: {fn_label}).", flush=True)
+            print("         If FN key is unreliable, check:", flush=True)
+            print("         System Settings > Keyboard > Press Globe key to > Do Nothing", flush=True)
+        print(flush=True)
+    except Exception:
+        pass  # Non-critical check
+
     # Request microphone permission explicitly (triggers popup on first launch)
     request_microphone_permission()
     print(flush=True)

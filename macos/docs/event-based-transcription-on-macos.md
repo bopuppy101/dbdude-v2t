@@ -31,6 +31,16 @@ Replaced `CGEventSourceFlagsState` polling with an **NSEvent global monitor** us
 - **Polling loop for recording control** keeps the recording start/stop logic simple and sequential, avoiding the bugs that occurred in a previous attempt to go fully event-driven
 - **Same architecture as Windows** (`keyboard.on_press_key`/`on_release_key` callbacks set flags, main loop reads them) which has been stable
 
+## Required: Disable Globe key emoji shortcut
+
+The FN/Globe key on modern MacBooks doubles as the emoji picker trigger. When "Press 🌐 key to" is set to "Show Emoji & Symbols" in System Settings, macOS intercepts FN key events at the system level and swallows release events, causing V2T to get stuck in recording mode.
+
+**Fix:** System Settings > Keyboard > "Press 🌐 key to" → **"Do Nothing"**
+
+This was confirmed as the root cause of stuck recordings on the built-in MacBook keyboard (3 stuck recordings in 10 minutes with emoji enabled, zero with it disabled). The emoji picker is still accessible via Ctrl+Cmd+Space.
+
+This matches Wispr Flow's behavior — they also require users to disable the Globe key emoji shortcut.
+
 ## Testing
 Run for 1-2 weeks of heavy transcription use. Watch for:
 - Stuck recordings (FN release not detected)
@@ -38,6 +48,11 @@ Run for 1-2 weeks of heavy transcription use. Watch for:
 - Missed recordings or double transcriptions
 
 If stable, merge to `develop`. If not, `git checkout develop` to revert.
+
+## Known issue: undocking external keyboard
+When disconnecting from an external keyboard (e.g., unplugging a Magic Keyboard or removing the MacBook from a Studio Display), the NSEvent monitor may stop receiving FN key events. The monitor object remains alive but macOS appears to stop delivering events to it after the device change.
+
+For now, the fix is just restart the application.
 
 ## Related commits
 - `6dd2d01` — Added (broken) threaded timeout workaround
