@@ -19,10 +19,7 @@ import json
 import re
 import time
 import signal
-from Quartz import (
-    CGEventSourceFlagsState, kCGEventSourceStateHIDSystemState,
-    kCGEventFlagMaskSecondaryFn
-)
+from Cocoa import NSEvent, NSFlagsChanged, NSEventMaskFlagsChanged, NSFunctionKeyMask
 import objc
 
 # Load AVFoundation framework and get classes
@@ -103,6 +100,10 @@ audio_data = []
 stream = None
 app = None  # rumps app instance
 recording_start_time = None  # Track when recording started
+
+# Thread-safe FN key state (set by NSEvent monitor, read by polling loop)
+_fn_state_lock = threading.Lock()
+_fn_held = False
 
 # Non-blocking transcription queue
 transcription_queue = queue.Queue()
@@ -485,6 +486,8 @@ class V2TApp(rumps.App):
         # Timer to poll UI updates from background threads (runs on main thread)
         self.ui_timer = rumps.Timer(self._process_ui_queue, 0.05)  # 50ms
         self.ui_timer.start()
+        # Install NSEvent global monitor for Fn key (must be on main thread)
+        setup_fn_monitor()
 
     def _process_ui_queue(self, _):
         """Process pending UI updates on main thread."""
@@ -664,18 +667,38 @@ def stop_recording():
             app.set_ready()
 
 
-def recording_control_worker():
-    """Poll key state directly and handle recording start/stop.
+def _fn_flags_changed(event):
+    """NSEvent callback — only flips the _fn_held flag (thread-safe)."""
+    global _fn_held
+    fn_down = bool(event.modifierFlags() & NSFunctionKeyMask)
+    with _fn_state_lock:
+        _fn_held = fn_down
 
-    Uses CGEventSourceFlagsState to directly read current modifier state.
-    No event tap needed - just polls every 20ms.
+
+def setup_fn_monitor():
+    """Install NSEvent global monitor for Fn key flag changes.
+
+    Must be called from the main thread (after NSApplication run loop starts).
+    """
+    NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+        NSEventMaskFlagsChanged, _fn_flags_changed
+    )
+    print("NSEvent Fn monitor installed.", flush=True)
+
+
+def recording_control_worker():
+    """Poll FN key state and handle recording start/stop.
+
+    Reads the _fn_held flag set by the NSEvent monitor callback.
+    Hybrid approach: event-driven key detection, poll-based recording control
+    (same pattern as the stable Windows version).
     """
     global recording
 
     while not shutdown_event.is_set():
-        # Poll modifier state DIRECTLY - no event tap needed
-        flags = CGEventSourceFlagsState(kCGEventSourceStateHIDSystemState)
-        fn_held = bool(flags & kCGEventFlagMaskSecondaryFn)
+        # Read thread-safe FN state (set by NSEvent callback)
+        with _fn_state_lock:
+            fn_held = _fn_held
 
         # Act on state
         if fn_held and not recording:
@@ -723,6 +746,26 @@ if __name__ == "__main__":
     load_rules()
     print(flush=True)
 
+    # Check Globe/FN key setting — emoji mode intercepts FN events
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['defaults', 'read', 'com.apple.HIToolbox', 'AppleFnUsageType'],
+            capture_output=True, text=True, timeout=5
+        )
+        fn_usage = result.stdout.strip()
+        fn_labels = {'0': 'Change Input Source', '1': 'Show Emoji & Symbols', '2': 'Start Dictation', '3': 'Do Nothing'}
+        fn_label = fn_labels.get(fn_usage, f'Unknown ({fn_usage})')
+        if fn_usage == '3':
+            print(f"INFO: Globe/FN key set to: {fn_label}", flush=True)
+        else:
+            print(f"WARNING: Globe/FN key may not be set to 'Do Nothing' (detected: {fn_label}).", flush=True)
+            print("         If FN key is unreliable, check:", flush=True)
+            print("         System Settings > Keyboard > Press Globe key to > Do Nothing", flush=True)
+        print(flush=True)
+    except Exception:
+        pass  # Non-critical check
+
     # Request microphone permission explicitly (triggers popup on first launch)
     request_microphone_permission()
     print(flush=True)
@@ -739,7 +782,7 @@ if __name__ == "__main__":
     transcription_thread = threading.Thread(target=transcription_worker, daemon=True)
     transcription_thread.start()
 
-    # Start recording control worker thread (polls key state directly via CGEventSourceFlagsState)
+    # Start recording control worker thread (reads FN state from NSEvent monitor)
     recording_control_thread = threading.Thread(target=recording_control_worker, daemon=True)
     recording_control_thread.start()
 

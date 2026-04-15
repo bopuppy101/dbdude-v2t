@@ -59,7 +59,24 @@ else:
 " 2>&1 || echo "WARNING: Could not set icon (pyobjc issue)."
 fi
 
+# Check Globe/FN key setting (non-critical, never errors out)
+FN_USAGE=$(defaults read com.apple.HIToolbox AppleFnUsageType 2>/dev/null || echo "unknown")
+case "$FN_USAGE" in
+    0) FN_LABEL="Change Input Source" ;;
+    1) FN_LABEL="Show Emoji & Symbols" ;;
+    2) FN_LABEL="Start Dictation" ;;
+    3) FN_LABEL="Do Nothing" ;;
+    *) FN_LABEL="Unknown ($FN_USAGE)" ;;
+esac
+if [ "$FN_USAGE" = "3" ]; then
+    echo "Globe/FN key set to: $FN_LABEL"
+else
+    echo "WARNING: Globe/FN key may not be set to 'Do Nothing' (detected: $FN_LABEL)."
+    echo "         If FN key is unreliable, check:"
+    echo "         System Settings > Keyboard > Press Globe key to > Do Nothing"
+fi
 echo ""
+
 echo "=== Setup Complete ==="
 echo ""
 echo "To run:"
