@@ -1,7 +1,11 @@
-# AVAudioEngine Implementation Plan (feature/avaudioengine)
+# AVAudioEngine Implementation
 
-## Branch
-`feature/avaudioengine` off `develop`.
+> **Status:** Merged to `develop` on 2026-04-17. This is the live macOS audio capture implementation. The pre-merge `sounddevice`-based state is preserved on branch `feature/legacy-sounddevice` as a revert safety net.
+>
+> This document is retained as both a design record (problem → solution → architecture) and a reference for the non-obvious PyObjC bridging required for AVAudioEngine. It started as a pre-implementation plan; headings like "Step-by-step" and "Open questions / risks" describe what was tracked *before* the work landed and are kept here so the decision history stays intact.
+
+## Branch history
+Implemented on `feature/avaudioengine` off `develop`, merged back in commit `0043d8d`.
 
 ## Problem being solved
 Two bugs in the current sounddevice/PortAudio audio path on macOS:
@@ -118,3 +122,18 @@ If this goes sideways: `git checkout develop && git branch -D feature/avaudioeng
 - `1ad66f3` — Original stale-stream fix that traded 50% miss rate for ~200ms first-word drop.
 - `macos/docs/event-based-transcription-on-macos.md` — NSEvent FN-key detection (already merged to develop, separate concern).
 - [sebsto/wispr](https://github.com/sebsto/wispr) — Open-source clone of Wispr Flow using AVAudioEngine.
+
+## How the open questions resolved
+
+1. **PyObjC block signature.** Setting `__block_signature__ = b'v@?@@'` alone was not enough because PyObjC's AVFoundation bindings don't ship metadata for `installTapOnBus:bufferSize:format:block:`. We had to call `objc.registerMetaDataForSelector` on `AVAudioNode` to declare the block shape (see the top of `macos/dbdude-v2t.py`). Without that, PyObjC raises `TypeError: Argument 5 is a block, but no signature available` when the tap is installed.
+
+2. **Sample rate.** AVAudioEngine's input node refused to tap with a non-native format on Apple Silicon — the hardware locked to 48 kHz mono float32. We chose option A-prime: install the tap at the native rate, accumulate native samples while recording, then resample to 16 kHz **once per recording** in `stop_recording` via `scipy.signal.resample_poly`. The `recording_control_worker` thread does the resample, keeping the audio-thread tap callback fast.
+
+3. **AVAudioPCMBuffer → numpy.** `floatChannelData()` returns a `PyObjCPointer` wrapping a `float**`. It has no `__int__` or `.value` attribute, but it *does* expose `pointerAsInteger`, which is the raw C pointer address. From there, `ctypes.cast(..., POINTER(POINTER(c_float)))[0]` gives the channel-0 `float*` and `np.ctypeslib.as_array(ptr, shape=(frame_length,)).copy()` gives the samples. An attempt to parse the pointer address out of `repr(ptr)` caused a segfault because the parsed address was the Python object's own address, not the wrapped C pointer.
+
+4. **Threading.** Unchanged from the plan. The audio-thread tap callback just does a ctypes cast, numpy copy, and list append — no I/O, no resampling. All heavy work happens in the polling worker thread.
+
+5. **Device change handling.** Unchanged — deferred. No notification handler installed yet. If the mic is unplugged mid-session, restart the app to recover (same as the NSEvent monitor's external-keyboard caveat).
+
+## Tweaks made after the initial merge
+- RMS silence-rejection threshold in `stop_recording` lowered from `0.005` to `0.003` so quiet speech isn't dropped as silence. Tradeoff: more ambient / TV noise may pass through and produce Whisper hallucinations. See `docs/audio-capture-library-per-platform.md` for the cross-platform overview.

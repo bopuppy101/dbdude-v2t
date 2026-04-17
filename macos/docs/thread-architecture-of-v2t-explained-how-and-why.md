@@ -1,4 +1,8 @@
-# Thread Architecture of dbdude-v2t: How and Why
+# Thread Architecture of dbdude-v2t: How and Why (Windows)
+
+> **⚠️ This document describes the Windows implementation, not macOS.** It currently lives in `macos/docs/` by mistake — the content refers to `pystray`, `tkinter`, `PySide6`/`QApplication`, `Alt+Shift` hotkey, Nuitka-compiled .exe behavior, and `type_text.exe` output, all of which are Windows-specific. The macOS thread architecture is described in `macos/docs/architecture.md` and `macos/docs/how-macos-v2t-py-works-architecture.md`.
+>
+> The `sounddevice`/`sd.InputStream` references below remain accurate for Windows — Windows was not changed in the April 2026 macOS audio conversion from sounddevice to AVAudioEngine. macOS no longer uses sounddevice for capture; see `docs/audio-capture-library-per-platform.md` for the cross-platform overview.
 
 ## Overview
 
