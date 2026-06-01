@@ -210,7 +210,7 @@ def load_saved_settings():
         'debug': False,
         'push_to_talk_keys': {
             'left_alt_shift': True,
-            'caps_lock': True,
+            'caps_lock': False,  # Disabled 2026-06-01: caps lock (toggle key, suppressed) caused phantom record/transcribe events
             'right_alt': False,
             'left_ctrl_shift': False
         }
@@ -1201,7 +1201,7 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
     if push_to_talk_keys is None:
         push_to_talk_keys = {
             'left_alt_shift': True,
-            'caps_lock': True,
+            'caps_lock': False,  # Disabled 2026-06-01: caps lock (toggle key, suppressed) caused phantom record/transcribe events
             'right_alt': False,
             'left_ctrl_shift': False
         }
@@ -1420,7 +1420,7 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
     print(f">> dbdude-v2t v{VERSION}")
     print(f">> Session started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f">> Hold [{ptt_keys_display}] to RECORD; release to STOP & TRANSCRIBE.")
-    print(">> Press Ctrl+Shift+Q to exit. Press Ctrl+Alt+R to toggle Hands-Free recording.")
+    print(">> Press Ctrl+Shift+Q to exit. (Hold a push-to-talk key to record; no toggle mode.)")
     print(f">> Running: {exe_path}")
     print(f">> Using type_text.exe: {type_text_exe}")
     print(f">> Model: {model_name} | Language: {language}")
@@ -1550,7 +1550,12 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
         keyboard.on_press_key('left ctrl', on_left_ctrl_press, suppress=False)
         keyboard.on_release_key('left ctrl', on_left_ctrl_release, suppress=False)
 
-    keyboard.add_hotkey('ctrl+alt+r', on_toggle_continuous, suppress=False)
+    # Hands-Free (continuous) recording toggle DISABLED 2026-06-01.
+    # Ctrl+Alt+R latched recording_event ON permanently, causing the app to
+    # record and transcribe with no key held. Per user request, the only way to
+    # record is now hold-to-talk (push-to-talk) — no toggle keystroke may start
+    # recording. Registration intentionally removed; on_toggle_continuous and the
+    # continuous_mode branch below are now dead code and never fire.
     keyboard.add_hotkey('ctrl+shift+q', on_exit_hotkey, suppress=False)
 
     # Main loop state
