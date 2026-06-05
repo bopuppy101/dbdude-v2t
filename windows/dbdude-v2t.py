@@ -40,6 +40,14 @@ import ctranslate2
 import pystray
 from PIL import Image
 
+# SLEEPWAKE-L1: sleep/wake hardening helpers (see docs/sleep-wake-hardening-plan-windows.md)
+from sleepwake import (
+    SLEEPWAKE_L1_ENABLED,
+    SLEEPWAKE_L1_VK,
+    sleepwake_l1_stuck_flags,
+    sleepwake_l1_read_physical_keys,
+)
+
 ERROR_LOG_FILE = Path.home() / "logs" / "v2t-error.log"
 
 
@@ -1562,12 +1570,60 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
     recording = False
     continuous_mode = False
 
+    # SLEEPWAKE-L1: per-flag consecutive-stuck counters for the 2-poll debounce
+    sleepwake_l1_stuck_streak = {}
+
     # Main loop does all actual work based on state flags
     try:
         while not shutdown_event.is_set():
             if not audio_thread.is_alive():
                 print("CRITICAL: Audio thread died unexpectedly. Exiting.")
                 break
+
+            # === SLEEPWAKE-L1: key-state watchdog (clears stuck push-to-talk flags) ===
+            # Ground truth from Win32 GetAsyncKeyState (hook-independent) catches a
+            # key-release the keyboard hook missed across sleep/wake. A 2-poll debounce
+            # prevents a single misread from cutting off genuine dictation. If a stuck
+            # flag was holding recording on, stop and DISCARD the phantom audio (it is
+            # whatever the mic captured with no key held — must not be transcribed).
+            if SLEEPWAKE_L1_ENABLED:
+                phys = sleepwake_l1_read_physical_keys(SLEEPWAKE_L1_VK)
+                with state_lock:
+                    held_now = {k: state[k] for k in SLEEPWAKE_L1_VK}
+                stuck_now = set(sleepwake_l1_stuck_flags(held_now, phys))
+                confirmed = []
+                for k in SLEEPWAKE_L1_VK:
+                    if k in stuck_now:
+                        sleepwake_l1_stuck_streak[k] = sleepwake_l1_stuck_streak.get(k, 0) + 1
+                        if sleepwake_l1_stuck_streak[k] >= 2:
+                            confirmed.append(k)
+                    else:
+                        sleepwake_l1_stuck_streak[k] = 0
+                if confirmed:
+                    with state_lock:
+                        for k in confirmed:
+                            state[k] = False
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] WARNING: SLEEPWAKE-L1 cleared stuck key flag(s) {confirmed} — no key physically held", file=sys.stderr)
+                    # Is any enabled record combo still PHYSICALLY held? If not, and we
+                    # were recording, it was phantom — stop and discard without transcribing.
+                    still_held = False
+                    if push_to_talk_keys.get('left_alt_shift', True) and phys.get('left_alt_held') and phys.get('shift_held'):
+                        still_held = True
+                    if push_to_talk_keys.get('caps_lock', True) and phys.get('caps_lock_held'):
+                        still_held = True
+                    if push_to_talk_keys.get('right_alt', False) and phys.get('right_alt_held'):
+                        still_held = True
+                    if push_to_talk_keys.get('left_ctrl_shift', False) and phys.get('left_ctrl_held') and phys.get('shift_held'):
+                        still_held = True
+                    if recording and not continuous_mode and not still_held:
+                        recording_event.clear()
+                        recording = False
+                        time.sleep(0.05)
+                        discarded = drain_queue("sleepwake_l1_discard")
+                        clear_pending_systray_state()
+                        systray.set_ready()
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] WARNING: SLEEPWAKE-L1 stopped phantom recording, discarded {len(discarded)} audio chunk(s)", file=sys.stderr)
+            # === END SLEEPWAKE-L1 ===
 
             # Read state snapshot
             with state_lock:
