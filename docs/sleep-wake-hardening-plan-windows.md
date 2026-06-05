@@ -82,16 +82,31 @@ Tag: `SLEEPWAKE-L2` · Flag: `SLEEPWAKE_L2_ENABLED`
 > logged + reflected in the tray so it is never a silent wait. Decide exact numbers
 > when we reach this layer; default to the simple fixed-interval unless agreed otherwise.
 
-- [ ] Wrap `sd.InputStream` in a **capped** retry loop (fixed interval, default ~2s)
+- [x] Wrap `sd.InputStream` in a **capped** retry loop (fixed interval, default ~2s)
       so the worker reopens instead of dying on error. NO unbounded backoff.
-- [ ] Add a callback heartbeat so a silently-deaf stream is detected and restarted.
-- [ ] Stop the main loop from exiting the app on a transient audio failure.
-- [ ] Extract retry/backoff decision into a pure, unit-testable helper.
-- [ ] Wrap all of the above in `SLEEPWAKE-L2` banners + enable flag.
-- [ ] **Test:** unit tests for retry/backoff logic green.
-- [ ] **Test:** non-sleep regression — normal recording unaffected.
-- [ ] **Test:** simulate device loss + sleep/wake → audio recovers, app stays up.
+- [x] Add a callback heartbeat so a silently-deaf stream is detected and restarted.
+      → `last_audio_callback_ts` stamped each callback; `sleepwake_l2_stream_is_stale`.
+- [x] Stop the main loop from exiting the app on a transient audio failure.
+      → self-healing worker keeps the thread alive; reopens instead of returning.
+- [x] Extract retry/backoff decision into a pure, unit-testable helper.
+      → `sleepwake_l2_next_retry_delay` + `sleepwake_l2_stream_is_stale` in `sleepwake.py`.
+- [x] Wrap all of the above in `SLEEPWAKE-L2` banners + enable flag (`SLEEPWAKE_L2_ENABLED = True`).
+- [x] **Test:** unit tests for retry/backoff logic green. (9 L2 tests; 17 total all green.)
+- [x] **Test:** non-sleep regression — normal recording unaffected (2026-06-05 console log clean).
+- [~] **Test:** device loss + sleep/wake.
+      - SLEEP/WAKE (2026-06-05): 19-min auto-sleep, audio survived cleanly, no SLEEPWAKE-L2
+        lines needed, dictation worked instantly on wake. App stayed up. PASS (soft case / no break).
+      - HARD UNPLUG (2026-06-05): pulled Elgato USB-C; reopen did NOT recover, required restart.
+        ROOT CAUSE: PortAudio enumerates devices once at init and does not see hot-plugged
+        devices; a plain reopen grabs the stale/dead handle. Real recovery needs a PortAudio
+        re-init (sd._terminate()/_initialize()) + re-resolve device. **Deferred to Layer 3's
+        resume re-arm** (user only cares about sleep/wake; this machine survives sleep cleanly,
+        so the hard path isn't triggered by sleeping here).
 - [ ] **Bulletproof sign-off** (multi-day real use) before starting Layer 3.
+
+> **Known limitation (2026-06-05):** Layer 2 recovers SOFT audio failures (stream throws or
+> goes deaf, device still present). It does NOT recover a HARD device-loss (device leaves the
+> USB bus and returns) — that requires a PortAudio re-init, which is folded into Layer 3.
 
 ## Layer 3 — Resume re-arm via time-gap detection (catch-all)
 

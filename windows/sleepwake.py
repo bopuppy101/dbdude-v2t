@@ -19,7 +19,7 @@ import ctypes
 
 # Per-layer enable flags — flip a layer off to isolate a regression / retrofit.
 SLEEPWAKE_L1_ENABLED = True
-SLEEPWAKE_L2_ENABLED = False  # not implemented yet
+SLEEPWAKE_L2_ENABLED = True
 SLEEPWAKE_L3_ENABLED = False  # not implemented yet
 
 
@@ -85,4 +85,57 @@ def sleepwake_l1_read_physical_keys(flag_names):
     return pressed
 # ============================================================================
 # END SLEEPWAKE-L1
+# ============================================================================
+
+
+# ============================================================================
+# SLEEPWAKE-L2: Self-healing audio worker (fixes "stops working" after sleep/wake)
+# ============================================================================
+# The audio worker opens the mic stream once. On wake the device handle is stale,
+# so the stream either throws (worker dies -> app exits) or goes silently deaf
+# (callbacks stop firing, app looks alive but captures nothing). Layer 2 makes the
+# worker self-healing: it reopens the stream on failure, and detects a silently-
+# deaf stream via a callback heartbeat and reopens that too. The app never exits
+# on a transient audio failure.
+#
+# Retry policy is a FLAT fixed interval — deliberately NOT exponential/unbounded
+# backoff (which can grow to minutes and feel like a hang). It retries forever
+# only in the sense of "until shutdown"; the caller gates the loop on the shutdown
+# event and uses an interruptible wait so exits stay instant.
+
+SLEEPWAKE_L2_RETRY_INTERVAL_S = 2.0   # fixed delay between stream-reopen attempts
+SLEEPWAKE_L2_STALE_TIMEOUT_S = 1.0    # no callback for this long => stream is deaf
+
+
+def sleepwake_l2_next_retry_delay(attempt=None):
+    """SLEEPWAKE-L2 (pure): delay before the next stream-reopen attempt.
+
+    Always the same fixed interval regardless of how many attempts have failed.
+    The `attempt` arg is accepted and intentionally ignored — it documents that
+    we deliberately do NOT grow the delay (no exponential/unbounded backoff).
+    """
+    return SLEEPWAKE_L2_RETRY_INTERVAL_S
+
+
+def sleepwake_l2_stream_is_stale(last_callback_ts, now, timeout=SLEEPWAKE_L2_STALE_TIMEOUT_S):
+    """SLEEPWAKE-L2 (pure): True if the audio stream appears deaf.
+
+    The audio callback stamps the time it last fired. While a healthy stream is
+    open, callbacks fire continuously (every blocksize). If none has fired within
+    `timeout` seconds, the stream has gone silent and should be reopened.
+
+    Args:
+        last_callback_ts: timestamp of the last callback, or None if none yet.
+        now: current timestamp.
+        timeout: max allowed seconds between callbacks.
+    Returns:
+        bool. Returns False when last_callback_ts is None (stream not yet
+        producing callbacks — nothing to declare stale), and False for a
+        non-positive elapsed time (clock anomaly), to avoid false restarts.
+    """
+    if last_callback_ts is None:
+        return False
+    return (now - last_callback_ts) > timeout
+# ============================================================================
+# END SLEEPWAKE-L2
 # ============================================================================

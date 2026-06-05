@@ -14,7 +14,12 @@ import unittest
 # Make `import sleepwake` work regardless of where the test is run from.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sleepwake import sleepwake_l1_stuck_flags
+from sleepwake import (
+    sleepwake_l1_stuck_flags,
+    sleepwake_l2_next_retry_delay,
+    sleepwake_l2_stream_is_stale,
+    SLEEPWAKE_L2_RETRY_INTERVAL_S,
+)
 
 
 # ----------------------------------------------------------------------------
@@ -64,6 +69,45 @@ class TestSleepwakeL1StuckFlags(unittest.TestCase):
 
     def test_empty_inputs(self):
         self.assertEqual(sleepwake_l1_stuck_flags({}, {}), [])
+
+
+# ----------------------------------------------------------------------------
+# SLEEPWAKE-L2: self-healing audio worker pure helpers
+# ----------------------------------------------------------------------------
+class TestSleepwakeL2RetryDelay(unittest.TestCase):
+    def test_delay_is_the_fixed_interval(self):
+        self.assertEqual(sleepwake_l2_next_retry_delay(), SLEEPWAKE_L2_RETRY_INTERVAL_S)
+
+    def test_delay_never_grows_with_attempts(self):
+        # The whole point: NO exponential/unbounded backoff.
+        delays = [sleepwake_l2_next_retry_delay(attempt=n) for n in range(0, 100)]
+        self.assertEqual(set(delays), {SLEEPWAKE_L2_RETRY_INTERVAL_S})
+
+    def test_delay_is_positive(self):
+        self.assertGreater(sleepwake_l2_next_retry_delay(), 0)
+
+
+class TestSleepwakeL2StreamIsStale(unittest.TestCase):
+    def test_none_timestamp_is_not_stale(self):
+        # No callback yet -> nothing to declare stale (avoid false restart at startup).
+        self.assertFalse(sleepwake_l2_stream_is_stale(None, now=100.0, timeout=1.0))
+
+    def test_recent_callback_is_not_stale(self):
+        self.assertFalse(sleepwake_l2_stream_is_stale(100.0, now=100.5, timeout=1.0))
+
+    def test_old_callback_is_stale(self):
+        self.assertTrue(sleepwake_l2_stream_is_stale(100.0, now=101.5, timeout=1.0))
+
+    def test_exactly_at_timeout_is_not_stale(self):
+        # Strictly greater-than -> exactly at the boundary is still OK.
+        self.assertFalse(sleepwake_l2_stream_is_stale(100.0, now=101.0, timeout=1.0))
+
+    def test_clock_anomaly_negative_elapsed_is_not_stale(self):
+        # now < last (clock jumped back) -> do not declare stale.
+        self.assertFalse(sleepwake_l2_stream_is_stale(100.0, now=99.0, timeout=1.0))
+
+    def test_uses_default_timeout(self):
+        self.assertTrue(sleepwake_l2_stream_is_stale(0.0, now=10.0))
 
 
 if __name__ == '__main__':

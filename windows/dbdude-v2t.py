@@ -46,6 +46,9 @@ from sleepwake import (
     SLEEPWAKE_L1_VK,
     sleepwake_l1_stuck_flags,
     sleepwake_l1_read_physical_keys,
+    SLEEPWAKE_L2_ENABLED,
+    sleepwake_l2_next_retry_delay,
+    sleepwake_l2_stream_is_stale,
 )
 
 ERROR_LOG_FILE = Path.home() / "logs" / "v2t-error.log"
@@ -1296,8 +1299,11 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
 
     # Debug counter for audio callback (only used in debug mode)
     callback_debug_counter = [0]  # Use list to allow modification in nested function
+    # SLEEPWAKE-L2: heartbeat — timestamp of the last audio callback (deaf-stream detector)
+    last_audio_callback_ts = [None]
 
     def audio_callback(indata, frames, time_info, status):
+        last_audio_callback_ts[0] = time.time()  # SLEEPWAKE-L2 heartbeat (every callback)
         if status:
             print(f"Audio Status: {status}", file=sys.stderr)
         if recording_event.is_set():
@@ -1308,14 +1314,52 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
                 if callback_debug_counter[0] % 100 == 0:
                     print(f"DEBUG: audio_callback queued chunk #{callback_debug_counter[0]}, queue size ~{audio_queue.qsize()}")
 
+    def _open_audio_stream():
+        """Open the input stream (single attempt). Shared by both code paths."""
+        return sd.InputStream(samplerate=SAMPLERATE,
+                              channels=CHANNELS,
+                              dtype=AUDIO_DTYPE,
+                              blocksize=AUDIO_BLOCKSIZE,
+                              device=audio_device,
+                              callback=audio_callback)
+
     def audio_stream_worker():
+        # === SLEEPWAKE-L2: self-healing audio worker =========================
+        # Reopen the stream on failure (fixed-interval retry, NO unbounded
+        # backoff) and on a silently-deaf stream (no callbacks for >timeout,
+        # e.g. after sleep/wake). The app never exits on a transient audio
+        # failure. The loop is gated on shutdown_event and waits interruptibly,
+        # so quitting is always instant. Flip SLEEPWAKE_L2_ENABLED off to fall
+        # back to the original single-open behavior (clean bisect).
+        if SLEEPWAKE_L2_ENABLED:
+            first_open = True
+            failures = 0
+            while not shutdown_event.is_set():
+                try:
+                    with _open_audio_stream():
+                        last_audio_callback_ts[0] = time.time()  # reset heartbeat on (re)open
+                        if first_open:
+                            print(">> Audio Stream Active. Ready to record.")
+                            first_open = False
+                        else:
+                            failures = 0
+                            print(f"[{datetime.now().strftime('%H:%M:%S')}] WARNING: SLEEPWAKE-L2 audio stream recovered", file=sys.stderr)
+                        # Inner run loop: watch for shutdown AND a deaf stream.
+                        while not shutdown_event.is_set():
+                            if sleepwake_l2_stream_is_stale(last_audio_callback_ts[0], time.time()):
+                                print(f"[{datetime.now().strftime('%H:%M:%S')}] WARNING: SLEEPWAKE-L2 audio stream went silent; reopening", file=sys.stderr)
+                                break  # leave the context -> reopen below
+                            time.sleep(0.1)
+                except Exception as e:
+                    failures += 1
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] WARNING: SLEEPWAKE-L2 audio stream error (#{failures}): {e}; reopening in {sleepwake_l2_next_retry_delay(failures)}s", file=sys.stderr)
+                # Wait before reopening — interruptible so shutdown wins instantly.
+                if not shutdown_event.is_set():
+                    shutdown_event.wait(sleepwake_l2_next_retry_delay(failures))
+            return
+        # === END SLEEPWAKE-L2 (fallback: original single-open behavior) =======
         try:
-            with sd.InputStream(samplerate=SAMPLERATE,
-                                channels=CHANNELS,
-                                dtype=AUDIO_DTYPE,
-                                blocksize=AUDIO_BLOCKSIZE,
-                                device=audio_device,
-                                callback=audio_callback):
+            with _open_audio_stream():
                 print(">> Audio Stream Active. Ready to record.")
                 while not shutdown_event.is_set():
                     time.sleep(0.1)

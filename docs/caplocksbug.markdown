@@ -1,7 +1,12 @@
 # Caps Lock Bug (Windows) — Caps Lock key stops working while V2T runs
 
 **Priority:** Low
-**Status:** Logged — **do NOT start until the sleep/wake hardening work (all 3 layers) is complete.**
+**Status:** ✅ RESOLVED (side effect) — verified 2026-06-05. Caps Lock now toggles
+normally while V2T runs. Root cause was the `suppress=True` hook, which is only
+registered when Caps Lock is enabled as a record key; disabling Caps Lock as a
+push-to-talk key (settings + code defaults, 2026-06-01/05) stopped that hook from
+being registered. Confirmed live by the user after restarting V2T with `caps_lock: false`.
+No separate code change was needed — exactly as anticipated below.
 **Platform:** Windows (`windows/dbdude-v2t.py`)
 **Logged:** 2026-06-05
 
