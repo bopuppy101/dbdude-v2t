@@ -93,9 +93,12 @@ Tag: `SLEEPWAKE-L2` · Flag: `SLEEPWAKE_L2_ENABLED`
 - [x] Wrap all of the above in `SLEEPWAKE-L2` banners + enable flag (`SLEEPWAKE_L2_ENABLED = True`).
 - [x] **Test:** unit tests for retry/backoff logic green. (9 L2 tests; 17 total all green.)
 - [x] **Test:** non-sleep regression — normal recording unaffected (2026-06-05 console log clean).
-- [~] **Test:** device loss + sleep/wake.
-      - SLEEP/WAKE (2026-06-05): 19-min auto-sleep, audio survived cleanly, no SLEEPWAKE-L2
-        lines needed, dictation worked instantly on wake. App stayed up. PASS (soft case / no break).
+- [x] **Test:** device loss + sleep/wake.
+      - SLEEP/WAKE #1 (2026-06-05): 19-min auto-sleep, audio survived cleanly, no SLEEPWAKE-L2
+        lines needed, dictation worked instantly on wake. App stayed up. PASS (no break).
+      - SLEEP/WAKE #2 (2026-06-05, 20:13): audio DID go deaf on wake —
+        `SLEEPWAKE-L2 audio stream went silent; reopening` → `recovered` in ~3s, dictation
+        normal afterward. **First real-hardware confirmation of L2's recovery path** (soft case). PASS.
       - HARD UNPLUG (2026-06-05): pulled Elgato USB-C; reopen did NOT recover, required restart.
         ROOT CAUSE: PortAudio enumerates devices once at init and does not see hot-plugged
         devices; a plain reopen grabs the stale/dead handle. Real recovery needs a PortAudio
@@ -123,10 +126,13 @@ Tag: `SLEEPWAKE-L3` · Flag: `SLEEPWAKE_L3_ENABLED`
       add only if a wake is ever observed to actually kill audio on this hardware.
 - [x] Wrap all of the above in `SLEEPWAKE-L3` banners + enable flag (`SLEEPWAKE_L3_ENABLED = True`).
 - [x] **Test:** unit tests green (7 L3; 24 total). py_compile clean; all 3 flags True.
-- [ ] **Test:** non-sleep regression — normal push-to-talk; NO spurious RESUME lines. *(manual)*
-- [ ] **Test:** repeated sleep/wake → `RESUME DETECTED` prints, push-to-talk still works
-      after wake, no phantom recording. *(manual)*
-- [ ] **Bulletproof sign-off** (multi-day real use). NOT pushed to remote until user signs off.
+- [x] **Test:** non-sleep regression — normal push-to-talk; NO spurious RESUME lines.
+      (2026-06-05 console log: many normal cycles, zero false RESUME lines.)
+- [x] **Test:** sleep/wake → `RESUME DETECTED` prints, push-to-talk works after wake, no
+      phantom recording. (2026-06-05 20:13: `RESUME DETECTED — 347.5s gap`, hooks re-armed,
+      0 phantom chunks, dictation normal afterward. End-to-end confirmed on real hardware.)
+- [ ] **Repeated** sleep/wake cycles + multi-day **bulletproof sign-off** (intermittent bugs
+      only prove gone by not recurring). In progress; also being tested on second laptop.
 
 ---
 
