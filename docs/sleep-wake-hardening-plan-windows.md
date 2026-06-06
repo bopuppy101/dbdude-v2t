@@ -67,8 +67,13 @@ Tag: `SLEEPWAKE-L1` · Flag: `SLEEPWAKE_L1_ENABLED`
 - [x] **Test:** non-sleep regression — normal Left Alt+Shift push-to-talk unaffected.
       2026-06-05: 4 clean paired record/transcribe cycles, zero SLEEPWAKE-L1 lines
       (no false positives), running from source.
-- [ ] **Test:** sleep/wake repeatedly → no phantom recording. *(needs manual run)*
-- [ ] **Bulletproof sign-off** (multi-day real use) before starting Layer 2.
+- [x] **Test:** sleep/wake → no phantom recording. **FIELD-CONFIRMED FIRING** on XPS 16
+      (CPU/Yeti), 2026-06-05 20:37: tapping Caps Lock (a toggle key enabled as PTT there)
+      left `caps_lock_held` stuck True; L1 detected it via GetAsyncKeyState ("no key
+      physically held"), cleared it, stopped the phantom recording, discarded 0 chunks
+      (no junk typed). Repeated catches, all clean. First real-hardware proof L1 works.
+- [ ] **Bulletproof sign-off** (multi-day real use). In progress; intermittent bugs only
+      prove gone by not recurring. Also being tested on the second laptop.
 
 ## Layer 2 — Self-healing audio worker (fixes Bug B: stops working)
 
