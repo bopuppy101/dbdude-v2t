@@ -51,7 +51,6 @@ def load_settings():
         "device": None,
         "push_to_talk_keys": {
             "left_alt_shift": True,
-            "caps_lock": True,
             "right_alt": False,
             "left_ctrl_shift": False
         }
@@ -535,7 +534,6 @@ class ConfiguratorDialog(QDialog):
         # Get current push_to_talk_keys settings
         ptt_keys = self.settings.get("push_to_talk_keys", {
             "left_alt_shift": True,
-            "caps_lock": True,
             "right_alt": False,
             "left_ctrl_shift": False
         })
@@ -544,11 +542,6 @@ class ConfiguratorDialog(QDialog):
         self.ptt_left_alt_shift.setChecked(ptt_keys.get("left_alt_shift", True))
         self.ptt_left_alt_shift.stateChanged.connect(self._on_setting_changed)
         ptt_layout.addWidget(self.ptt_left_alt_shift)
-
-        self.ptt_caps_lock = QCheckBox("Caps Lock (Shift Lock)")
-        self.ptt_caps_lock.setChecked(ptt_keys.get("caps_lock", True))
-        self.ptt_caps_lock.stateChanged.connect(self._on_setting_changed)
-        ptt_layout.addWidget(self.ptt_caps_lock)
 
         self.ptt_right_alt = QCheckBox("Right Alt")
         self.ptt_right_alt.setChecked(ptt_keys.get("right_alt", False))
@@ -627,7 +620,6 @@ class ConfiguratorDialog(QDialog):
         # Build push_to_talk_keys dict
         ptt_keys = {
             "left_alt_shift": self.ptt_left_alt_shift.isChecked(),
-            "caps_lock": self.ptt_caps_lock.isChecked(),
             "right_alt": self.ptt_right_alt.isChecked(),
             "left_ctrl_shift": self.ptt_left_ctrl_shift.isChecked(),
         }

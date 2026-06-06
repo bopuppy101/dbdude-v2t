@@ -42,7 +42,6 @@ SLEEPWAKE_L1_VK = {
     'left_alt_held':  0xA4,  # VK_LMENU
     'right_alt_held': 0xA5,  # VK_RMENU
     'shift_held':     0x10,  # VK_SHIFT (either shift)
-    'caps_lock_held': 0x14,  # VK_CAPITAL (high bit = physically down)
     'left_ctrl_held': 0xA2,  # VK_LCONTROL
 }
 

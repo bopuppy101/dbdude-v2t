@@ -47,8 +47,8 @@ class TestSleepwakeL1StuckFlags(unittest.TestCase):
         self.assertEqual(sleepwake_l1_stuck_flags(held, pressed), ['left_alt_held'])
 
     def test_multiple_stuck(self):
-        held = {'left_alt_held': True, 'shift_held': True, 'caps_lock_held': False}
-        pressed = {'left_alt_held': False, 'shift_held': False, 'caps_lock_held': False}
+        held = {'left_alt_held': True, 'shift_held': True, 'left_ctrl_held': False}
+        pressed = {'left_alt_held': False, 'shift_held': False, 'left_ctrl_held': False}
         self.assertEqual(sorted(sleepwake_l1_stuck_flags(held, pressed)),
                          ['left_alt_held', 'shift_held'])
 

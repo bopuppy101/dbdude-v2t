@@ -223,7 +223,6 @@ def load_saved_settings():
         'debug': False,
         'push_to_talk_keys': {
             'left_alt_shift': True,
-            'caps_lock': False,  # Disabled 2026-06-01: caps lock (toggle key, suppressed) caused phantom record/transcribe events
             'right_alt': False,
             'left_ctrl_shift': False
         }
@@ -1214,7 +1213,6 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
     if push_to_talk_keys is None:
         push_to_talk_keys = {
             'left_alt_shift': True,
-            'caps_lock': False,  # Disabled 2026-06-01: caps lock (toggle key, suppressed) caused phantom record/transcribe events
             'right_alt': False,
             'left_ctrl_shift': False
         }
@@ -1463,8 +1461,6 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
     enabled_keys_display = []
     if push_to_talk_keys.get('left_alt_shift', True):
         enabled_keys_display.append("Left Alt+Shift")
-    if push_to_talk_keys.get('caps_lock', True):
-        enabled_keys_display.append("Caps Lock")
     if push_to_talk_keys.get('right_alt', False):
         enabled_keys_display.append("Right Alt")
     if push_to_talk_keys.get('left_ctrl_shift', False):
@@ -1526,7 +1522,6 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
         'left_alt_held': False,
         'right_alt_held': False,
         'shift_held': False,
-        'caps_lock_held': False,
         'left_ctrl_held': False,
         'toggle_requested': False
     }
@@ -1555,14 +1550,6 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
     def on_shift_release(event):
         with state_lock:
             state['shift_held'] = False
-
-    def on_caps_lock_press(event):
-        with state_lock:
-            state['caps_lock_held'] = True
-
-    def on_caps_lock_release(event):
-        with state_lock:
-            state['caps_lock_held'] = False
 
     def on_left_ctrl_press(event):
         with state_lock:
@@ -1594,11 +1581,6 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
         if push_to_talk_keys.get('left_alt_shift', True):
             keyboard.on_press_key('left alt', on_left_alt_press, suppress=False)
             keyboard.on_release_key('left alt', on_left_alt_release, suppress=False)
-
-        # Caps Lock (Shift Lock)
-        if push_to_talk_keys.get('caps_lock', True):
-            keyboard.on_press_key('caps lock', on_caps_lock_press, suppress=True)  # suppress=True prevents caps toggle
-            keyboard.on_release_key('caps lock', on_caps_lock_release, suppress=True)
 
         # Right Alt (solo or with shift)
         if push_to_talk_keys.get('right_alt', False) or push_to_talk_keys.get('right_alt_shift', False):
@@ -1697,8 +1679,6 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
                     still_held = False
                     if push_to_talk_keys.get('left_alt_shift', True) and phys.get('left_alt_held') and phys.get('shift_held'):
                         still_held = True
-                    if push_to_talk_keys.get('caps_lock', True) and phys.get('caps_lock_held'):
-                        still_held = True
                     if push_to_talk_keys.get('right_alt', False) and phys.get('right_alt_held'):
                         still_held = True
                     if push_to_talk_keys.get('left_ctrl_shift', False) and phys.get('left_ctrl_held') and phys.get('shift_held'):
@@ -1718,7 +1698,6 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
                 left_alt_held = state['left_alt_held']
                 right_alt_held = state['right_alt_held']
                 shift_held = state['shift_held']
-                caps_held = state['caps_lock_held']
                 left_ctrl_held = state['left_ctrl_held']
                 toggle_req = state['toggle_requested']
                 state['toggle_requested'] = False
@@ -1726,8 +1705,6 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
             # Build record_key_held based on enabled push-to-talk keys
             record_key_held = False
             if push_to_talk_keys.get('left_alt_shift', True) and left_alt_held and shift_held:
-                record_key_held = True
-            if push_to_talk_keys.get('caps_lock', True) and caps_held:
                 record_key_held = True
             if push_to_talk_keys.get('right_alt', False) and right_alt_held:
                 record_key_held = True
@@ -1755,7 +1732,7 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
                     if captured_audio:
                         transcription_queue.put(captured_audio)
 
-            # Handle hold-to-record: Alt+Shift OR Caps Lock (only if not in Hands-Free mode)
+            # Handle hold-to-record (only if not in Hands-Free mode)
             if not continuous_mode:
                 if record_key_held and not recording:
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] Started recording...")
