@@ -49,6 +49,8 @@ from sleepwake import (
     SLEEPWAKE_L2_ENABLED,
     sleepwake_l2_next_retry_delay,
     sleepwake_l2_stream_is_stale,
+    SLEEPWAKE_L3_ENABLED,
+    sleepwake_l3_detect_resume,
 )
 
 ERROR_LOG_FILE = Path.home() / "logs" / "v2t-error.log"
@@ -1577,38 +1579,43 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
     def on_exit_hotkey():
         shutdown_event.set()
 
-    # Register callbacks based on push_to_talk_keys settings
-    # Always register shift since it's used by multiple combos
-    keyboard.on_press_key('shift', on_shift_press, suppress=False)
-    keyboard.on_release_key('shift', on_shift_release, suppress=False)
+    def register_keyboard_hooks():
+        """Register all push-to-talk hooks + hotkeys based on push_to_talk_keys.
 
-    # Left Alt + Shift combo
-    if push_to_talk_keys.get('left_alt_shift', True):
-        keyboard.on_press_key('left alt', on_left_alt_press, suppress=False)
-        keyboard.on_release_key('left alt', on_left_alt_release, suppress=False)
+        Called once at startup and again by SLEEPWAKE-L3 on resume (after
+        keyboard.unhook_all()), because a sleep/wake can leave the global
+        keyboard hook dead — re-registering revives push-to-talk.
+        """
+        # Always register shift since it's used by multiple combos
+        keyboard.on_press_key('shift', on_shift_press, suppress=False)
+        keyboard.on_release_key('shift', on_shift_release, suppress=False)
 
-    # Caps Lock (Shift Lock)
-    if push_to_talk_keys.get('caps_lock', True):
-        keyboard.on_press_key('caps lock', on_caps_lock_press, suppress=True)  # suppress=True prevents caps toggle
-        keyboard.on_release_key('caps lock', on_caps_lock_release, suppress=True)
+        # Left Alt + Shift combo
+        if push_to_talk_keys.get('left_alt_shift', True):
+            keyboard.on_press_key('left alt', on_left_alt_press, suppress=False)
+            keyboard.on_release_key('left alt', on_left_alt_release, suppress=False)
 
-    # Right Alt (solo or with shift)
-    if push_to_talk_keys.get('right_alt', False) or push_to_talk_keys.get('right_alt_shift', False):
-        keyboard.on_press_key('right alt', on_right_alt_press, suppress=False)
-        keyboard.on_release_key('right alt', on_right_alt_release, suppress=False)
+        # Caps Lock (Shift Lock)
+        if push_to_talk_keys.get('caps_lock', True):
+            keyboard.on_press_key('caps lock', on_caps_lock_press, suppress=True)  # suppress=True prevents caps toggle
+            keyboard.on_release_key('caps lock', on_caps_lock_release, suppress=True)
 
-    # Left Ctrl + Shift combo
-    if push_to_talk_keys.get('left_ctrl_shift', False):
-        keyboard.on_press_key('left ctrl', on_left_ctrl_press, suppress=False)
-        keyboard.on_release_key('left ctrl', on_left_ctrl_release, suppress=False)
+        # Right Alt (solo or with shift)
+        if push_to_talk_keys.get('right_alt', False) or push_to_talk_keys.get('right_alt_shift', False):
+            keyboard.on_press_key('right alt', on_right_alt_press, suppress=False)
+            keyboard.on_release_key('right alt', on_right_alt_release, suppress=False)
 
-    # Hands-Free (continuous) recording toggle DISABLED 2026-06-01.
-    # Ctrl+Alt+R latched recording_event ON permanently, causing the app to
-    # record and transcribe with no key held. Per user request, the only way to
-    # record is now hold-to-talk (push-to-talk) — no toggle keystroke may start
-    # recording. Registration intentionally removed; on_toggle_continuous and the
-    # continuous_mode branch below are now dead code and never fire.
-    keyboard.add_hotkey('ctrl+shift+q', on_exit_hotkey, suppress=False)
+        # Left Ctrl + Shift combo
+        if push_to_talk_keys.get('left_ctrl_shift', False):
+            keyboard.on_press_key('left ctrl', on_left_ctrl_press, suppress=False)
+            keyboard.on_release_key('left ctrl', on_left_ctrl_release, suppress=False)
+
+        # Hands-Free (continuous) recording toggle DISABLED 2026-06-01 (see git log).
+        # Only hold-to-talk may start recording — no toggle keystroke.
+        keyboard.add_hotkey('ctrl+shift+q', on_exit_hotkey, suppress=False)
+
+    # Register hooks now (startup). SLEEPWAKE-L3 re-registers these on resume.
+    register_keyboard_hooks()
 
     # Main loop state
     recording = False
@@ -1617,9 +1624,46 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
     # SLEEPWAKE-L1: per-flag consecutive-stuck counters for the 2-poll debounce
     sleepwake_l1_stuck_streak = {}
 
+    # SLEEPWAKE-L3: timestamp of the previous main-loop tick (resume detector)
+    sleepwake_l3_last_tick_ts = time.time()
+
     # Main loop does all actual work based on state flags
     try:
         while not shutdown_event.is_set():
+            # === SLEEPWAKE-L3: resume re-arm (detect sleep via main-loop tick gap) ===
+            # The process can't be told it slept (it's frozen), so we infer it: a
+            # multi-second gap between ticks (normally ~0.02s) means we were suspended.
+            # A long dictation never trips this — the loop stays busy with tiny gaps.
+            if SLEEPWAKE_L3_ENABLED:
+                _l3_now = time.time()
+                _l3_elapsed = _l3_now - sleepwake_l3_last_tick_ts
+                sleepwake_l3_last_tick_ts = _l3_now
+                if sleepwake_l3_detect_resume(_l3_elapsed):
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] WARNING: SLEEPWAKE-L3 RESUME DETECTED — {_l3_elapsed:.1f}s gap since last tick; re-arming keyboard + clearing key state", file=sys.stderr)
+                    # 1) Reset key state, stop any (phantom) recording, discard buffered audio.
+                    with state_lock:
+                        for _k in list(state.keys()):
+                            if _k.endswith('_held'):
+                                state[_k] = False
+                        state['toggle_requested'] = False
+                    sleepwake_l1_stuck_streak.clear()
+                    recording_event.clear()
+                    recording = False
+                    time.sleep(0.05)
+                    _discarded = drain_queue("sleepwake_l3_resume_discard")
+                    clear_pending_systray_state()
+                    systray.set_ready()
+                    # 2) Re-arm the keyboard hooks (a sleep can leave the global hook dead).
+                    try:
+                        keyboard.unhook_all()
+                        register_keyboard_hooks()
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] WARNING: SLEEPWAKE-L3 keyboard hooks re-armed (discarded {len(_discarded)} buffered chunk(s))", file=sys.stderr)
+                    except Exception as _e:
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR: SLEEPWAKE-L3 keyboard re-arm failed: {_e}", file=sys.stderr)
+                    # Audio recovery on resume is handled by Layer 2's stale-stream detector.
+                    # Full PortAudio re-init (hard device-loss) is a deferred TODO (Option A).
+            # === END SLEEPWAKE-L3 ===
+
             if not audio_thread.is_alive():
                 print("CRITICAL: Audio thread died unexpectedly. Exiting.")
                 break

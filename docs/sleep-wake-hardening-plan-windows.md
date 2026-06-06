@@ -115,15 +115,18 @@ Tag: `SLEEPWAKE-L3` · Flag: `SLEEPWAKE_L3_ENABLED`
 - [x] Write pure helper: detect a sleep from the wall-clock gap between main-loop
       ticks (threshold ~5s, tunable). → `sleepwake_l3_detect_resume` in `sleepwake.py`.
 - [x] Add unit tests for the gap detector. (7 tests incl. long-dictation-not-resume.)
-- [ ] On detected resume: clear all state flags + `recording_event` (+ drain phantom),
-      `unhook_all` + re-register keyboard hooks, and force a full audio rebuild incl.
-      **PortAudio re-init** (covers the hard device-loss case from L2). Print a console
-      `RESUME DETECTED` line.
-- [ ] Wrap all of the above in `SLEEPWAKE-L3` banners + enable flag.
-- [ ] **Test:** unit tests green.
-- [ ] **Test:** non-sleep regression.
-- [ ] **Test:** repeated sleep/wake → both bugs gone; full regression pass.
-- [ ] **Bulletproof sign-off** (multi-day real use).
+- [x] On detected resume (Option B): clear all state flags + `recording_event` (+ drain
+      phantom audio), `unhook_all` + re-register keyboard hooks (revives push-to-talk if the
+      hook died on wake), print a console `RESUME DETECTED` line. Audio recovery on resume is
+      handled by Layer 2's stale-stream detector.
+      **DEFERRED (Option A TODO):** full PortAudio re-init for the hard device-loss case —
+      add only if a wake is ever observed to actually kill audio on this hardware.
+- [x] Wrap all of the above in `SLEEPWAKE-L3` banners + enable flag (`SLEEPWAKE_L3_ENABLED = True`).
+- [x] **Test:** unit tests green (7 L3; 24 total). py_compile clean; all 3 flags True.
+- [ ] **Test:** non-sleep regression — normal push-to-talk; NO spurious RESUME lines. *(manual)*
+- [ ] **Test:** repeated sleep/wake → `RESUME DETECTED` prints, push-to-talk still works
+      after wake, no phantom recording. *(manual)*
+- [ ] **Bulletproof sign-off** (multi-day real use). NOT pushed to remote until user signs off.
 
 ---
 

@@ -20,7 +20,7 @@ import ctypes
 # Per-layer enable flags — flip a layer off to isolate a regression / retrofit.
 SLEEPWAKE_L1_ENABLED = True
 SLEEPWAKE_L2_ENABLED = True
-SLEEPWAKE_L3_ENABLED = False  # not implemented yet
+SLEEPWAKE_L3_ENABLED = True
 
 
 # ============================================================================
