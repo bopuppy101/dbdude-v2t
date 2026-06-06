@@ -139,3 +139,35 @@ def sleepwake_l2_stream_is_stale(last_callback_ts, now, timeout=SLEEPWAKE_L2_STA
 # ============================================================================
 # END SLEEPWAKE-L2
 # ============================================================================
+
+
+# ============================================================================
+# SLEEPWAKE-L3: Resume re-arm via time-gap detection (catch-all)
+# ============================================================================
+# The process can't be notified mid-sleep (it's frozen), so we infer a resume
+# AFTER it happens: the main loop ticks every ~0.02s, so a multi-second gap
+# between two ticks means the process was suspended (i.e. the machine slept).
+# On detecting that, the caller does a full re-arm — clear all key state, drain
+# any phantom audio, re-register the keyboard hooks, and force a full audio
+# rebuild (incl. PortAudio re-init) — and prints a RESUME DETECTED console line.
+
+SLEEPWAKE_L3_RESUME_GAP_S = 5.0  # tick gap beyond this => system was asleep
+
+
+def sleepwake_l3_detect_resume(elapsed_seconds, threshold=SLEEPWAKE_L3_RESUME_GAP_S):
+    """SLEEPWAKE-L3 (pure): True if the gap between main-loop ticks indicates a sleep.
+
+    Normal ticks are ~0.02s apart; recording/transcribing keep the loop busy with
+    tiny gaps. Only a suspended (slept) process produces a multi-second gap, so a
+    long dictation is NOT mistaken for sleep — the loop was running the whole time.
+
+    Args:
+        elapsed_seconds: wall-clock seconds since the previous tick.
+        threshold: gap above which we declare a resume.
+    Returns:
+        bool (strictly greater-than; non-positive elapsed returns False).
+    """
+    return elapsed_seconds > threshold
+# ============================================================================
+# END SLEEPWAKE-L3
+# ============================================================================

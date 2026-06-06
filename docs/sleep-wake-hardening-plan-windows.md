@@ -112,11 +112,13 @@ Tag: `SLEEPWAKE-L2` · Flag: `SLEEPWAKE_L2_ENABLED`
 
 Tag: `SLEEPWAKE-L3` · Flag: `SLEEPWAKE_L3_ENABLED`
 
-- [ ] Write pure helper: detect a sleep from the wall-clock gap between main-loop
-      ticks (threshold ~5s, tunable).
-- [ ] Add unit tests for the gap detector.
-- [ ] On detected resume: restart audio stream, `unhook_all` + re-register keyboard
-      hooks, clear all state flags + `recording_event`.
+- [x] Write pure helper: detect a sleep from the wall-clock gap between main-loop
+      ticks (threshold ~5s, tunable). → `sleepwake_l3_detect_resume` in `sleepwake.py`.
+- [x] Add unit tests for the gap detector. (7 tests incl. long-dictation-not-resume.)
+- [ ] On detected resume: clear all state flags + `recording_event` (+ drain phantom),
+      `unhook_all` + re-register keyboard hooks, and force a full audio rebuild incl.
+      **PortAudio re-init** (covers the hard device-loss case from L2). Print a console
+      `RESUME DETECTED` line.
 - [ ] Wrap all of the above in `SLEEPWAKE-L3` banners + enable flag.
 - [ ] **Test:** unit tests green.
 - [ ] **Test:** non-sleep regression.

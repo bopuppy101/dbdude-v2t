@@ -19,6 +19,8 @@ from sleepwake import (
     sleepwake_l2_next_retry_delay,
     sleepwake_l2_stream_is_stale,
     SLEEPWAKE_L2_RETRY_INTERVAL_S,
+    sleepwake_l3_detect_resume,
+    SLEEPWAKE_L3_RESUME_GAP_S,
 )
 
 
@@ -108,6 +110,37 @@ class TestSleepwakeL2StreamIsStale(unittest.TestCase):
 
     def test_uses_default_timeout(self):
         self.assertTrue(sleepwake_l2_stream_is_stale(0.0, now=10.0))
+
+
+# ----------------------------------------------------------------------------
+# SLEEPWAKE-L3: resume detection pure helper
+# ----------------------------------------------------------------------------
+class TestSleepwakeL3DetectResume(unittest.TestCase):
+    def test_normal_tick_is_not_resume(self):
+        # ~0.02s between ticks -> definitely not a sleep.
+        self.assertFalse(sleepwake_l3_detect_resume(0.02))
+
+    def test_long_dictation_gap_is_not_resume(self):
+        # The loop stays busy during recording; per-tick gaps stay tiny even
+        # across a 60s dictation. A sub-threshold gap must NOT trip resume.
+        self.assertFalse(sleepwake_l3_detect_resume(0.1))
+
+    def test_exactly_threshold_is_not_resume(self):
+        self.assertFalse(sleepwake_l3_detect_resume(SLEEPWAKE_L3_RESUME_GAP_S))
+
+    def test_just_over_threshold_is_resume(self):
+        self.assertTrue(sleepwake_l3_detect_resume(SLEEPWAKE_L3_RESUME_GAP_S + 0.01))
+
+    def test_long_sleep_is_resume(self):
+        self.assertTrue(sleepwake_l3_detect_resume(60.0))
+
+    def test_zero_and_negative_not_resume(self):
+        self.assertFalse(sleepwake_l3_detect_resume(0.0))
+        self.assertFalse(sleepwake_l3_detect_resume(-3.0))
+
+    def test_custom_threshold(self):
+        self.assertTrue(sleepwake_l3_detect_resume(2.0, threshold=1.0))
+        self.assertFalse(sleepwake_l3_detect_resume(0.5, threshold=1.0))
 
 
 if __name__ == '__main__':
