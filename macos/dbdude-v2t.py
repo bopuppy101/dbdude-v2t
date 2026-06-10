@@ -23,6 +23,29 @@ from scipy.signal import resample_poly
 from Cocoa import NSEvent, NSFlagsChanged, NSEventMaskFlagsChanged, NSFunctionKeyMask
 import objc
 
+# SLEEPWAKE: sleep/wake hardening helpers (see docs/sleep-wake-hardening-plan-windows.md
+# for the layer design; macos/sleepwake.py for the macOS-specific notes)
+from sleepwake import (
+    SLEEPWAKE_L1_ENABLED,
+    SLEEPWAKE_L1_DEBOUNCE_TICKS,
+    sleepwake_l1_stuck_flags,
+    sleepwake_l1_fn_physically_down,
+    SLEEPWAKE_L2_ENABLED,
+    sleepwake_l2_next_retry_delay,
+    sleepwake_l2_stream_is_stale,
+    sleepwake_l2_should_rebuild,
+    SLEEPWAKE_L3_ENABLED,
+    sleepwake_l3_detect_resume,
+)
+
+# SLEEPWAKE-TEST: opt-in hooks so sleep/wake behavior can be exercised without
+# a human pressing FN. Enabled ONLY via V2T_TEST_HOOKS=1:
+#   - SIGUSR1 toggles a fake "FN held" flag (drives record/stop)
+#   - typing of transcriptions is DISABLED (console log only), so a test run
+#     can never type into whatever window has focus
+V2T_TEST_HOOKS = os.environ.get('V2T_TEST_HOOKS') == '1'
+_test_fn_override = [False]
+
 # Load AVFoundation framework and get classes
 objc.loadBundle('AVFoundation', globals(), '/System/Library/Frameworks/AVFoundation.framework')
 AVCaptureDevice = objc.lookUpClass('AVCaptureDevice')
@@ -128,6 +151,11 @@ native_sample_rate = None  # set at engine startup, used for resampling
 # FN key state (set by NSEvent monitor, read by polling loop)
 _fn_state_lock = threading.Lock()
 _fn_held = False
+_fn_monitor = None  # NSEvent monitor handle (kept so SLEEPWAKE-L3 can re-arm it)
+
+# SLEEPWAKE-L2: heartbeat — timestamp of the last tap callback (deaf-engine detector).
+# One-element list so the audio-thread callback can stamp it without `global`.
+_sleepwake_l2_last_tap_ts = [None]
 
 transcription_queue = queue.Queue()
 shutdown_event = threading.Event()
@@ -404,8 +432,12 @@ def transcription_worker():
             text = apply_wildcard_mappings(text)
             text = apply_rules(text)
             print(f"Mapped to:   {text}", flush=True)
-            time.sleep(0.05)
-            typer.type(text)
+            if V2T_TEST_HOOKS:
+                # SLEEPWAKE-TEST: never type into the focused window during a test run
+                print("TEST MODE: typing suppressed", flush=True)
+            else:
+                time.sleep(0.05)
+                typer.type(text)
         except Exception as e:
             print(f"ERROR in transcription worker: {e}", flush=True)
         finally:
@@ -434,6 +466,112 @@ class V2TApp(rumps.App):
         self.ui_timer.start()
         setup_fn_monitor()
         setup_audio_engine()
+        # === SLEEPWAKE: watchdog timer ====================================
+        # Runs on the main thread (AppKit/AVFoundation calls are safe here).
+        # Its interval doubles as the L2 fixed retry cadence: one rebuild
+        # attempt per tick until healthy — flat interval, never backs off.
+        self._sleepwake_last_tick_ts = time.time()   # L3 resume detector
+        self._sleepwake_l1_stuck_streak = 0          # L1 debounce counter
+        self._sleepwake_l2_failures = 0              # L2 consecutive-failure count
+        self.sleepwake_timer = rumps.Timer(self._sleepwake_watchdog, sleepwake_l2_next_retry_delay())
+        self.sleepwake_timer.start()
+        # === END SLEEPWAKE ================================================
+
+    # ========================================================================
+    # SLEEPWAKE: watchdog (L3 resume re-arm, L1 stuck-FN check, L2 audio heal)
+    # ========================================================================
+    def _sleepwake_watchdog(self, _):
+        global recording, _fn_held
+        if shutdown_event.is_set():
+            return
+        now = time.time()
+        elapsed = now - self._sleepwake_last_tick_ts
+        self._sleepwake_last_tick_ts = now
+
+        # === SLEEPWAKE-L3: resume re-arm (detect sleep via tick gap) =======
+        # The timer can't fire mid-sleep (process frozen), so a gap far beyond
+        # the ~2s interval means the machine slept. Full re-arm on resume.
+        if SLEEPWAKE_L3_ENABLED and sleepwake_l3_detect_resume(elapsed):
+            print(f"WARNING: SLEEPWAKE-L3 RESUME DETECTED — {elapsed:.1f}s gap since "
+                  f"last tick; re-arming FN monitor + audio engine, clearing key state", flush=True)
+            self._sleepwake_rearm(reason="sleepwake_l3_resume")
+            return  # next tick re-checks L2 health with a fresh heartbeat
+
+        # === SLEEPWAKE-L1: stuck-FN watchdog (only while recording) ========
+        # Low-frequency ground-truth check via +[NSEvent modifierFlags] —
+        # deliberately NOT 50Hz polling (see sleepwake.py: CGEventSourceFlagsState
+        # permanent-block bug). Debounced so one misread can't cut off dictation.
+        # Skipped while the test hook fakes FN (physical key is up by design).
+        if SLEEPWAKE_L1_ENABLED and recording and not _test_fn_override[0]:
+            with _fn_state_lock:
+                held_now = {'fn_held': _fn_held}
+            phys = {'fn_held': sleepwake_l1_fn_physically_down()}
+            if sleepwake_l1_stuck_flags(held_now, phys):
+                self._sleepwake_l1_stuck_streak += 1
+                if self._sleepwake_l1_stuck_streak >= SLEEPWAKE_L1_DEBOUNCE_TICKS:
+                    print("WARNING: SLEEPWAKE-L1 cleared stuck fn_held flag — "
+                          "no key physically held; stopping phantom recording", flush=True)
+                    self._sleepwake_rearm(reason="sleepwake_l1_stuck", rearm_audio=False,
+                                          rearm_monitor=False)
+            else:
+                self._sleepwake_l1_stuck_streak = 0
+        else:
+            self._sleepwake_l1_stuck_streak = 0
+
+        # === SLEEPWAKE-L2: self-healing audio engine =======================
+        if SLEEPWAKE_L2_ENABLED:
+            try:
+                engine_running = bool(audio_engine is not None and audio_engine.isRunning())
+            except Exception:
+                engine_running = False
+            stale = sleepwake_l2_stream_is_stale(_sleepwake_l2_last_tap_ts[0], now)
+            if sleepwake_l2_should_rebuild(engine_running, stale):
+                self._sleepwake_l2_failures += 1
+                why = "engine not running" if not engine_running else "tap went silent"
+                print(f"WARNING: SLEEPWAKE-L2 {why} (#{self._sleepwake_l2_failures}); "
+                      f"rebuilding (next retry in {sleepwake_l2_next_retry_delay(self._sleepwake_l2_failures)}s if it fails)", flush=True)
+                if sleepwake_l2_rebuild_audio_engine():
+                    print("WARNING: SLEEPWAKE-L2 audio engine recovered", flush=True)
+                    self._sleepwake_l2_failures = 0
+            elif self._sleepwake_l2_failures:
+                # Engine became healthy again (first callbacks arrived).
+                self._sleepwake_l2_failures = 0
+
+    def _sleepwake_rearm(self, reason, rearm_audio=True, rearm_monitor=True):
+        """Clear FN/recording state, DISCARD phantom audio, optionally re-arm
+        the NSEvent monitor and rebuild the audio engine. Main thread only.
+
+        Ordering matters vs. the 20ms recording_control_worker: clear _fn_held
+        first, then empty the chunk buffer, then drop `recording` — if the
+        worker fires in between, stop_recording() sees no chunks and returns
+        without transcribing, so phantom audio can never be typed.
+        """
+        global recording, _fn_held, audio_chunks
+        with _fn_state_lock:
+            _fn_held = False
+        _test_fn_override[0] = False
+        was_recording = recording
+        discarded = len(audio_chunks)
+        audio_chunks = []
+        recording = False
+        self._sleepwake_l1_stuck_streak = 0
+        if was_recording:
+            print(f"WARNING: {reason} stopped phantom recording, "
+                  f"discarded {discarded} audio chunk(s)", flush=True)
+        if rearm_monitor:
+            try:
+                sleepwake_l3_rearm_fn_monitor()
+                print("WARNING: SLEEPWAKE-L3 FN monitor re-armed", flush=True)
+            except Exception as e:
+                print(f"ERROR: SLEEPWAKE-L3 FN monitor re-arm failed: {e}", flush=True)
+        if rearm_audio:
+            if sleepwake_l2_rebuild_audio_engine():
+                print("WARNING: SLEEPWAKE-L3 audio engine rebuilt on resume", flush=True)
+            # on failure the L2 check retries every tick (fixed interval)
+        self.set_ready()
+    # ========================================================================
+    # END SLEEPWAKE watchdog
+    # ========================================================================
 
     def _process_ui_queue(self, _):
         while not ui_status_queue.empty():
@@ -511,6 +649,7 @@ class V2TApp(rumps.App):
     def quit_app(self, _):
         print("\nQuitting from menu...", flush=True)
         self.ui_timer.stop()
+        self.sleepwake_timer.stop()
         cleanup()
         rumps.quit_application()
         os._exit(0)
@@ -554,6 +693,10 @@ def _audio_tap_callback(buffer, when):
     """
     global _tap_diag_printed
     try:
+        # SLEEPWAKE-L2 heartbeat: stamp EVERY callback, before the recording
+        # check — a healthy engine fires this continuously, so silence here
+        # is how the watchdog detects a deaf engine after sleep/wake.
+        _sleepwake_l2_last_tap_ts[0] = time.time()
         if not recording:
             return
         frame_length = int(buffer.frameLength())
@@ -590,6 +733,10 @@ def setup_audio_engine():
     """
     global audio_engine, audio_input_node, native_sample_rate
 
+    # SLEEPWAKE-L2: reset the heartbeat so a just-(re)built engine isn't
+    # immediately declared stale before its first callback fires.
+    _sleepwake_l2_last_tap_ts[0] = None
+
     audio_engine = AVAudioEngine.alloc().init()
     audio_input_node = audio_engine.inputNode()
 
@@ -613,6 +760,44 @@ def setup_audio_engine():
         print(f"ERROR starting AVAudioEngine: {error}", flush=True)
         raise RuntimeError(f"AVAudioEngine failed to start: {error}")
     print("AVAudioEngine started.", flush=True)
+
+
+# ============================================================================
+# SLEEPWAKE-L2: self-healing AVAudioEngine
+# ============================================================================
+def sleepwake_l2_rebuild_audio_engine():
+    """Tear down the (dead/deaf) engine and build a fresh one.
+
+    A full rebuild — not a restart of the old engine — because after a wake or
+    device switch the old engine/tap can hold stale device state, and the input
+    format may have changed. setup_audio_engine() re-reads the native format,
+    so native_sample_rate stays correct after a device/rate change.
+
+    Returns True on success, False on failure (caller retries on a fixed
+    interval — never unbounded backoff, never gives up).
+    """
+    global audio_engine, audio_input_node
+    if audio_engine is not None:
+        try:
+            if audio_input_node is not None:
+                audio_input_node.removeTapOnBus_(0)
+        except Exception:
+            pass
+        try:
+            audio_engine.stop()
+        except Exception:
+            pass
+        audio_engine = None
+        audio_input_node = None
+    try:
+        setup_audio_engine()
+        return True
+    except Exception as e:
+        print(f"WARNING: SLEEPWAKE-L2 engine rebuild failed: {e}", flush=True)
+        return False
+# ============================================================================
+# END SLEEPWAKE-L2
+# ============================================================================
 
 
 def start_recording():
@@ -670,10 +855,29 @@ def _fn_flags_changed(event):
 
 def setup_fn_monitor():
     """Install NSEvent global monitor for Fn key flag changes."""
-    NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+    global _fn_monitor
+    _fn_monitor = NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
         NSEventMaskFlagsChanged, _fn_flags_changed
     )
     print("NSEvent Fn monitor installed.", flush=True)
+
+
+# ============================================================================
+# SLEEPWAKE-L3: NSEvent monitor re-arm (a sleep can leave the monitor dead)
+# ============================================================================
+def sleepwake_l3_rearm_fn_monitor():
+    """Remove and re-install the global FN monitor. Main thread only."""
+    global _fn_monitor
+    try:
+        if _fn_monitor is not None:
+            NSEvent.removeMonitor_(_fn_monitor)
+    except Exception as e:
+        print(f"WARNING: SLEEPWAKE-L3 removeMonitor failed (continuing): {e}", flush=True)
+    _fn_monitor = None
+    setup_fn_monitor()
+# ============================================================================
+# END SLEEPWAKE-L3
+# ============================================================================
 
 
 def recording_control_worker():
@@ -685,6 +889,8 @@ def recording_control_worker():
     while not shutdown_event.is_set():
         with _fn_state_lock:
             fn_held = _fn_held
+        if V2T_TEST_HOOKS and _test_fn_override[0]:  # SLEEPWAKE-TEST fake FN
+            fn_held = True
         if fn_held and not recording:
             recording = True
             start_recording()
@@ -752,6 +958,14 @@ if __name__ == "__main__":
     print(flush=True)
 
     signal.signal(signal.SIGTERM, handle_sigterm)
+
+    # SLEEPWAKE-TEST: SIGUSR1 toggles fake FN (record/stop) — V2T_TEST_HOOKS=1 only
+    if V2T_TEST_HOOKS:
+        def _handle_sigusr1(signum, frame):
+            _test_fn_override[0] = not _test_fn_override[0]
+            print(f"TEST MODE: fake FN -> {'HELD' if _test_fn_override[0] else 'RELEASED'}", flush=True)
+        signal.signal(signal.SIGUSR1, _handle_sigusr1)
+        print("*** TEST MODE (V2T_TEST_HOOKS=1): SIGUSR1 toggles recording; typing DISABLED ***", flush=True)
 
     transcription_thread = threading.Thread(target=transcription_worker, daemon=True)
     transcription_thread.start()
