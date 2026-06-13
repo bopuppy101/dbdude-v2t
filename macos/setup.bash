@@ -8,26 +8,34 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "=== dbdude-v2t macOS Setup ==="
 
-# Check Python is available
-if ! command -v python3 &> /dev/null; then
-    echo "ERROR: python3 not found. Install Python 3.10+ from python.org or via Homebrew."
+# Pick a Python 3.10+ interpreter.
+# On macOS bare `python3` is usually Apple's stub Python 3.9 (/usr/bin/python3),
+# which is first on PATH ahead of Homebrew. So prefer explicit versioned binaries
+# and only fall back to bare `python3` if it happens to be new enough.
+PY=""
+PYTHON_VERSION=""
+for cand in python3.14 python3.13 python3.12 python3.11 python3.10 python3; do
+    command -v "$cand" &> /dev/null || continue
+    read -r MAJ MIN <<< "$("$cand" -c 'import sys; print(sys.version_info.major, sys.version_info.minor)' 2>/dev/null)" || continue
+    if [ "${MAJ:-0}" -eq 3 ] && [ "${MIN:-0}" -ge 10 ]; then
+        PY="$cand"
+        PYTHON_VERSION="${MAJ}.${MIN}"
+        break
+    fi
+done
+
+if [ -z "$PY" ]; then
+    echo "ERROR: Python 3.10+ is required, but none was found."
+    echo "       Install it from python.org or via Homebrew (e.g. 'brew install python@3.14'), then re-run."
     exit 1
 fi
 
-# Verify Python version is 3.10+
-read -r PYTHON_MAJOR PYTHON_MINOR <<< "$(python3 -c 'import sys; print(sys.version_info.major, sys.version_info.minor)')"
-PYTHON_VERSION="${PYTHON_MAJOR}.${PYTHON_MINOR}"
-if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 10 ]; }; then
-    echo "ERROR: Python 3.10+ is required, but found Python ${PYTHON_VERSION}."
-    exit 1
-fi
-
-echo "Found Python ${PYTHON_VERSION}"
+echo "Found Python ${PYTHON_VERSION} (${PY})"
 
 # Create venv if it doesn't exist
 if [ ! -d "${SCRIPT_DIR}/venv" ]; then
     echo "Creating Python virtual environment..."
-    python3 -m venv "${SCRIPT_DIR}/venv"
+    "$PY" -m venv "${SCRIPT_DIR}/venv"
 fi
 
 # Verify requirements.txt exists
