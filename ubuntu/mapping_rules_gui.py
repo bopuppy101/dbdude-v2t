@@ -292,6 +292,14 @@ class MappingRulesWindow(QMainWindow):
 
         layout.addLayout(top_layout)
 
+        # Show file path, so there's never ambiguity about which file is live.
+        maps_file = get_user_data_dir() / "custom_mappings.json"
+        path_label = QLabel(f"Config file: {maps_file}")
+        path_label.setStyleSheet("font-size: 11px; color: #888888; font-family: monospace;")
+        path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        path_label.setToolTip(str(maps_file))
+        layout.addWidget(path_label)
+
         # Table
         self.table = QTableWidget()
         self.table.setColumnCount(5)

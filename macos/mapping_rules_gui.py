@@ -307,6 +307,15 @@ class MappingRulesDialog(QDialog):
 
         layout.addLayout(top_layout)
 
+        # Show the actual file being edited, so there's never ambiguity about which
+        # path is live (macOS stores this under ~/Library/Application Support, not ~/.dbdude-v2t).
+        maps_path = get_user_data_dir() / "custom_mappings.json"
+        path_label = QLabel(f"Config file: {maps_path}")
+        path_label.setStyleSheet("font-size: 11px; color: #888888; font-family: Menlo, Monaco, monospace;")
+        path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        path_label.setToolTip(str(maps_path))
+        layout.addWidget(path_label)
+
         # Table
         self.table = QTableWidget()
         self.table.setColumnCount(5)
