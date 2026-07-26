@@ -445,8 +445,18 @@ def type_with_xdotool(text):
         return False
 
 def process_and_output(buffer_list):
+    print(f">> CAPTURE RESULT: {len(buffer_list)} chunks drained | "
+          f"callback calls={_cb_stats['calls']} frames={_cb_stats['frames']} "
+          f"queued={_cb_stats['queued']} status_events={_cb_stats['status_count']}")
+
     if not buffer_list:
         print("INFO: No audio captured; skipping transcription.")
+        if _cb_stats["calls"] == 0:
+            print("   DIAGNOSIS: audio callback NEVER fired - stream opened but "
+                  "the device is delivering no data.", file=sys.stderr)
+        else:
+            print(f"   DIAGNOSIS: callback fired {_cb_stats['calls']}x but nothing was "
+                  "queued - recording_event was not set during capture.", file=sys.stderr)
         return
 
     try:
@@ -454,6 +464,14 @@ def process_and_output(buffer_list):
     except ValueError as e:
         print(f"ERROR: Audio buffer malformed: {e}")
         return
+
+    _peak = float(np.abs(audio_np).max()) if audio_np.size else 0.0
+    _rms = float(np.sqrt(np.mean(audio_np ** 2))) if audio_np.size else 0.0
+    print(f">> RAW AUDIO: samples={audio_np.size} ({audio_np.size / DEVICE_SAMPLERATE:.2f}s "
+          f"@ {DEVICE_SAMPLERATE}Hz) peak={_peak:.6f} rms={_rms:.6f}")
+    if _peak < 1e-5:
+        print("   WARNING: signal is digital silence - wrong input device or muted mic.",
+              file=sys.stderr)
 
     # Resample from device rate (48kHz) to Whisper rate (16kHz)
     audio_np = resample(audio_np, int(len(audio_np) * WHISPER_SAMPLERATE / DEVICE_SAMPLERATE))
@@ -492,12 +510,78 @@ recording_event = threading.Event()   # Set when we should capture audio
 shutdown_event = threading.Event()    # Set when we want to exit the app
 audio_queue = queue.Queue()           # Thread-safe data transfer
 
+_cb_stats = {"calls": 0, "frames": 0, "queued": 0, "first_logged": False,
+             "status_count": 0, "status_last_print": 0.0}
+
 def audio_callback(indata, frames, time_info, status):
     """Called by sounddevice in a background thread."""
+    _cb_stats["calls"] += 1
+    _cb_stats["frames"] += frames
+
+    if not _cb_stats["first_logged"]:
+        _cb_stats["first_logged"] = True
+        peak = float(np.abs(indata).max()) if indata.size else 0.0
+        print(f">> AUDIO CALLBACK ALIVE: first call, frames={frames}, "
+              f"shape={indata.shape}, dtype={indata.dtype}, peak={peak:.6f}")
+
     if status:
-        print(f"Audio Status: {status}", file=sys.stderr)
+        # Rate-limited: this fires per callback (many times a second) and would
+        # otherwise flood the console and clobber terminal selections.
+        _cb_stats["status_count"] += 1
+        _now = time.time()
+        if _now - _cb_stats["status_last_print"] >= 30:
+            _cb_stats["status_last_print"] = _now
+            print(f"Audio Status: {status} "
+                  f"(x{_cb_stats['status_count']} since start)", file=sys.stderr)
+
     if recording_event.is_set():
         audio_queue.put(indata.copy())
+        _cb_stats["queued"] += 1
+
+def _log_audio_config(device_name, audio_device):
+    """Print the resolved audio device and every parameter used to open it."""
+    print("=" * 62)
+    print(">> AUDIO CONFIG")
+    print(f"   settings 'device'   : {device_name!r}")
+    print(f"   resolved index      : {audio_device}"
+          f"{'  (no match - using system default)' if audio_device is None else ''}")
+
+    try:
+        info = sd.query_devices(audio_device if audio_device is not None else None,
+                                kind='input')
+        print(f"   resolved name       : {info['name']!r}")
+        print(f"   host api            : {sd.query_hostapis(info['hostapi'])['name']}")
+        print(f"   max input channels  : {info['max_input_channels']}")
+        print(f"   device default rate : {info['default_samplerate']}")
+    except Exception as e:
+        print(f"   resolved name       : <lookup failed: {e}>")
+
+    print(f"   requested samplerate: {DEVICE_SAMPLERATE}")
+    print(f"   requested channels  : {CHANNELS}")
+    print(f"   requested dtype     : {AUDIO_DTYPE}")
+    print(f"   requested blocksize : {AUDIO_BLOCKSIZE}")
+    print(f"   whisper samplerate  : {WHISPER_SAMPLERATE}")
+
+    try:
+        sd.check_input_settings(device=audio_device, samplerate=DEVICE_SAMPLERATE,
+                                channels=CHANNELS, dtype=AUDIO_DTYPE)
+        print("   compatibility check : OK")
+    except Exception as e:
+        print(f"   compatibility check : FAILED - {type(e).__name__}: {e}")
+
+    print(f"   PULSE_SERVER        : {os.environ.get('PULSE_SERVER', '<unset>')}")
+    print(f"   XDG_RUNTIME_DIR     : {os.environ.get('XDG_RUNTIME_DIR', '<unset>')}")
+    print("   available inputs:")
+    try:
+        for i, dev in enumerate(sd.query_devices()):
+            if dev['max_input_channels'] > 0:
+                mark = " <== SELECTED" if i == audio_device else ""
+                print(f"     [{i:2}] {dev['name']}"
+                      f"  ({dev['max_input_channels']}ch @ {int(dev['default_samplerate'])}){mark}")
+    except Exception as e:
+        print(f"     <enumeration failed: {e}>")
+    print("=" * 62)
+
 
 def audio_stream_worker():
     """Runs in a separate thread. Opens the stream and keeps it alive."""
@@ -516,18 +600,26 @@ def audio_stream_worker():
         except Exception as e:
             print(f"WARNING: Could not lookup device '{device_name}': {e}", file=sys.stderr)
 
+    _log_audio_config(device_name, audio_device)
+
     try:
         print(f">> Opening audio device: {audio_device}")
         with sd.InputStream(device=audio_device, samplerate=DEVICE_SAMPLERATE,
                             channels=CHANNELS,
                             dtype=AUDIO_DTYPE,
                             blocksize=AUDIO_BLOCKSIZE,
-                            callback=audio_callback):
+                            callback=audio_callback) as _stream:
             print(">> Audio Stream Active. Ready to record.")
+            print(f">> LIVE STREAM: device={_stream.device} "
+                  f"samplerate={_stream.samplerate} channels={_stream.channels} "
+                  f"dtype={_stream.dtype} blocksize={_stream.blocksize} "
+                  f"latency={_stream.latency} active={_stream.active}")
             while not shutdown_event.is_set():
                 time.sleep(0.1)
     except Exception as e:
         print(f"CRITICAL AUDIO FAILURE in worker thread: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
 
 def drain_queue():
     """Safely drains the queue into a list."""

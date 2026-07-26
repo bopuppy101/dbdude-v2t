@@ -37,5 +37,13 @@ else
     FINAL_LD_PATH="${LD_LIBRARY_PATH:-}"
 fi
 
-# Run with sudo, preserving DISPLAY for xdotool
-sudo DISPLAY="$DISPLAY" LD_LIBRARY_PATH="$FINAL_LD_PATH" "${VENV_PYTHON}" "${SCRIPT_DIR}/dbdude-v2t.py" "$@"
+# Run with sudo, preserving DISPLAY for xdotool and the caller's PipeWire/Pulse
+# socket so root can reach the user's audio session (USB mics are exposed there
+# with rate/channel conversion; raw ALSA hw: devices are not).
+USER_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+sudo DISPLAY="$DISPLAY" \
+     XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
+     PULSE_SERVER="${PULSE_SERVER:-unix:${USER_RUNTIME_DIR}/pulse/native}" \
+     PULSE_COOKIE="${PULSE_COOKIE:-${HOME}/.config/pulse/cookie}" \
+     LD_LIBRARY_PATH="$FINAL_LD_PATH" \
+     "${VENV_PYTHON}" "${SCRIPT_DIR}/dbdude-v2t.py" "$@"
