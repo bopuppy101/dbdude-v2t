@@ -535,8 +535,37 @@ def audio_callback(indata, frames, time_info, status):
                   f"(x{_cb_stats['status_count']} since start)", file=sys.stderr)
 
     if recording_event.is_set():
-        audio_queue.put(indata.copy())
+        # Raw ALSA hw: devices give us the mic's native channel count and will
+        # not downmix. Average to mono here so the buffer stays single-channel.
+        if indata.ndim > 1 and indata.shape[1] > 1:
+            audio_queue.put(indata.mean(axis=1, keepdims=True))
+        else:
+            audio_queue.put(indata.copy())
         _cb_stats["queued"] += 1
+
+def _actual_microphone():
+    """Resolve a virtual device ('default'/'pulse') to the real mic behind it.
+
+    Without this the log stops at 'default', which does not tell you whether
+    you are recording from the USB mic or an empty onboard jack.
+    """
+    try:
+        name = subprocess.run(['pactl', 'get-default-source'], capture_output=True,
+                              text=True, timeout=3).stdout.strip()
+        if not name:
+            return None
+        out = subprocess.run(['pactl', 'list', 'sources'], capture_output=True,
+                             text=True, timeout=3).stdout
+        match = False
+        for line in out.splitlines():
+            if line.strip().startswith('Name:'):
+                match = line.split('Name:', 1)[1].strip() == name
+            elif match and line.strip().startswith('Description:'):
+                return line.split('Description:', 1)[1].strip()
+        return name
+    except Exception:
+        return None
+
 
 def _log_audio_config(device_name, audio_device):
     """Print the resolved audio device and every parameter used to open it."""
@@ -550,6 +579,17 @@ def _log_audio_config(device_name, audio_device):
         info = sd.query_devices(audio_device if audio_device is not None else None,
                                 kind='input')
         print(f"   resolved name       : {info['name']!r}")
+
+        # 'default'/'pulse'/'pipewire' are virtual - say which mic is behind them.
+        if any(v in str(info['name']).lower() for v in ('default', 'pulse', 'pipewire')):
+            mic = _actual_microphone()
+            print(f"   >> ACTUAL MICROPHONE: {mic if mic else '<could not resolve>'}")
+            if mic and 'blue' not in mic.lower() and 'usb' not in mic.lower():
+                print(f"   >> WARNING: this is not the USB mic - check the default input.",
+                      file=sys.stderr)
+        else:
+            print(f"   >> ACTUAL MICROPHONE: {info['name']}")
+
         print(f"   host api            : {sd.query_hostapis(info['hostapi'])['name']}")
         print(f"   max input channels  : {info['max_input_channels']}")
         print(f"   device default rate : {info['default_samplerate']}")
@@ -602,10 +642,27 @@ def audio_stream_worker():
 
     _log_audio_config(device_name, audio_device)
 
+    # A raw hw: device only offers its native channel count. Ask for mono, but
+    # fall back to whatever the hardware exposes (the callback downmixes).
+    open_channels = CHANNELS
+    try:
+        sd.check_input_settings(device=audio_device, samplerate=DEVICE_SAMPLERATE,
+                                channels=CHANNELS, dtype=AUDIO_DTYPE)
+    except Exception:
+        try:
+            native = sd.query_devices(audio_device, kind='input')['max_input_channels']
+            if native and native != CHANNELS:
+                open_channels = native
+                print(f">> NOTE: device rejected {CHANNELS}ch; opening {native}ch "
+                      f"and downmixing to mono.")
+        except Exception as e:
+            print(f"WARNING: could not determine native channel count: {e}",
+                  file=sys.stderr)
+
     try:
         print(f">> Opening audio device: {audio_device}")
         with sd.InputStream(device=audio_device, samplerate=DEVICE_SAMPLERATE,
-                            channels=CHANNELS,
+                            channels=open_channels,
                             dtype=AUDIO_DTYPE,
                             blocksize=AUDIO_BLOCKSIZE,
                             callback=audio_callback) as _stream:

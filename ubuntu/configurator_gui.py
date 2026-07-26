@@ -182,23 +182,129 @@ VALID_LANGUAGES = [
 ]
 
 
+# ALSA exposes a pile of software conversion plugins as "capture devices".
+# They are not microphones and only confuse the picker.
+_ALSA_PLUMBING = {
+    'sysdefault', 'front', 'iec958', 'spdif', 'lavrate', 'samplerate',
+    'speexrate', 'a52', 'speex', 'upmix', 'vdownmix', 'dmix', 'dsnoop',
+    'null', 'oss', 'jack', 'hdmi', 'modem', 'phoneline',
+}
+
+
+def _is_plumbing(name):
+    """True for ALSA software plugins (not real capture hardware)."""
+    base = name.split(':')[0].split('(')[0].strip().lower()
+    return base in _ALSA_PLUMBING or base.startswith('surround')
+
+
+def _alsa_capture_cards():
+    """Read real capture hardware straight from the kernel.
+
+    /proc/asound is authoritative and readable even when the card is busy,
+    which is exactly when PortAudio silently drops the device from its list.
+    """
+    cards = {}
+    try:
+        with open('/proc/asound/cards') as fh:
+            text = fh.read()
+    except OSError:
+        return cards
+
+    for line in text.splitlines():
+        # e.g. " 1 [Microphones    ]: USB-Audio - Blue Microphones"
+        if '[' not in line or ']' not in line or ':' not in line:
+            continue
+        num_part = line.split('[', 1)[0].strip()
+        if not num_part.isdigit():
+            continue
+        card_id = line.split('[', 1)[1].split(']', 1)[0].strip()
+        rest = line.split(']', 1)[1].lstrip(': ').strip()
+        driver, _, pretty = rest.partition(' - ')
+        if not os.path.isdir(f'/proc/asound/card{num_part}/pcm0c'):
+            continue  # no capture stream on this card
+        cards[int(num_part)] = {
+            'card': int(num_part),
+            'id': card_id,
+            'name': pretty.strip() or card_id,
+            'usb': 'USB' in driver.upper(),
+        }
+    return cards
+
+
+def _default_source_description():
+    """Human-readable name of the system default input, via PipeWire/Pulse."""
+    try:
+        name = subprocess.run(['pactl', 'get-default-source'], capture_output=True,
+                              text=True, timeout=3).stdout.strip()
+        if not name:
+            return None
+        out = subprocess.run(['pactl', 'list', 'sources'], capture_output=True,
+                             text=True, timeout=3).stdout
+        block, found = [], False
+        for line in out.splitlines():
+            if line.strip().startswith('Name:'):
+                found = line.split('Name:', 1)[1].strip() == name
+            elif found and line.strip().startswith('Description:'):
+                return line.split('Description:', 1)[1].strip()
+        return name
+    except Exception:
+        return None
+
+
 def get_input_devices():
-    """Get list of available input devices."""
+    """Real capture devices, human-labelled, with busy hardware still listed."""
     devices = []
+    seen_cards = set()
+
     try:
         all_devices = sd.query_devices()
-        default_input = sd.query_devices(kind='input')
-        default_name = default_input['name'] if default_input else None
-
-        for i, dev in enumerate(all_devices):
-            if dev['max_input_channels'] > 0:
-                devices.append({
-                    'index': i,
-                    'name': dev['name'],
-                    'is_default': dev['name'] == default_name
-                })
     except Exception as e:
         print(f"Error getting input devices: {e}")
+        all_devices = []
+
+    # 1. The system default, annotated with what it currently resolves to.
+    desc = _default_source_description()
+    devices.append({
+        'index': -1,
+        'name': None,
+        'label': f"[--]  Follow system default"
+                 f"{f'   (now: {desc})' if desc else ''}",
+        'is_default': True,
+    })
+
+    # 2. Real hardware from PortAudio, skipping the ALSA plugin noise.
+    for i, dev in enumerate(all_devices):
+        if dev['max_input_channels'] <= 0 or _is_plumbing(dev['name']):
+            continue
+        name = dev['name']
+        if '(hw:' in name:
+            card_digits = name.split('(hw:', 1)[1].split(',', 1)[0]
+            if card_digits.isdigit():
+                seen_cards.add(int(card_digits))
+        # Save the full PortAudio name: two devices on one card share a prefix,
+        # so a shortened name would make them indistinguishable on load.
+        devices.append({
+            'index': i,
+            'name': name,
+            'label': f"[{i:2}]  {name}   ({dev['max_input_channels']}ch)"
+                     f"{'  - always this mic' if '(hw:' in name else ''}",
+            'is_default': False,
+        })
+
+    # 3. Hardware PortAudio could not probe because it is currently in use.
+    #    Without this the mic you are actually recording with is invisible.
+    for card in sorted(_alsa_capture_cards().values(), key=lambda c: c['card']):
+        if card['card'] in seen_cards:
+            continue
+        devices.append({
+            'index': 1000 + card['card'],
+            'name': card['name'],
+            'label': f"[c{card['card']}]  {card['name']}"
+                     f"{'  (USB)' if card['usb'] else ''}"
+                     f"   - always this mic  (busy now, works at startup)",
+            'is_default': False,
+        })
+
     return devices
 
 
@@ -378,18 +484,21 @@ class ConfiguratorDialog(QDialog):
         saved_device = self.settings.get("device")
         default_idx = None
         for dev in self.input_devices:
-            if saved_device and saved_device == dev['name']:
+            # Tolerant match: the same mic is named two ways depending on
+            # whether it was free at scan time ("Blue Microphones" from the
+            # kernel vs "Blue Microphones: USB Audio (hw:1,0)" from PortAudio).
+            # The app resolves by substring too, so mirror that here.
+            if saved_device and dev['name'] and (
+                    saved_device == dev['name']
+                    or saved_device.lower() in dev['name'].lower()
+                    or dev['name'].lower() in saved_device.lower()):
                 default_idx = dev['index']
                 break
             if dev['is_default'] and default_idx is None:
                 default_idx = dev['index']
 
         for dev in self.input_devices:
-            label = dev['name']
-            if dev['is_default']:
-                label += " (default)"
-
-            radio = QRadioButton(label)
+            radio = QRadioButton(dev.get('label') or dev['name'])
             radio.setProperty("device_index", dev['index'])
             radio.setProperty("is_default", dev['is_default'])
 
