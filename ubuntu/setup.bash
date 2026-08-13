@@ -11,7 +11,7 @@ echo "=== faster-whisper Ubuntu Setup ==="
 # System dependencies
 echo "Installing system packages..."
 sudo apt update
-sudo apt install -y portaudio19-dev xdotool python3-venv
+sudo apt install -y portaudio19-dev xdotool python3-venv libxcb-cursor0
 
 # Verify Python version is 3.10+
 read -r PYTHON_MAJOR PYTHON_MINOR <<< "$(python3 -c 'import sys; print(sys.version_info.major, sys.version_info.minor)')"
