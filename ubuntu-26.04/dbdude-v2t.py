@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
-# v6 - Ubuntu 26.04 version - uses ydotool for text output (Wayland-safe), requires sudo for keyboard module
+# v6 - Ubuntu 26.04 version - uses ydotool for text output (Wayland-safe), no sudo needed
+# (hotkeys read from /dev/input via keystate.py; requires membership in the input group)
 # v6 adds: dynamic mappings loaded from JSON files
 
 import os
@@ -21,7 +22,7 @@ import subprocess
 import argparse
 import numpy as np
 import sounddevice as sd
-import keyboard
+import keystate
 from scipy.signal import resample
 from faster_whisper import WhisperModel
 import ctranslate2
@@ -391,6 +392,9 @@ if not os.path.exists(_ydotool_socket):
     print("       Start the daemon with: systemctl --user enable --now ydotool.service", file=sys.stderr)
     sys.exit(1)
 
+# Start hotkey tracking (exits with guidance if /dev/input isn't readable)
+keystate.start()
+
 def replace_spoken_email(text):
     try:
         text = EMAIL_LITERAL_RE.sub(lambda m: f"{m.group('user')}@{m.group('domain')}", text, timeout=1)
@@ -703,11 +707,11 @@ def drain_queue():
 # --- Hotkey helpers ---
 def exit_hotkey_pressed():
     """Check if Ctrl+Shift+Q is pressed."""
-    return keyboard.is_pressed('ctrl') and keyboard.is_pressed('shift') and keyboard.is_pressed('q')
+    return keystate.is_pressed('ctrl') and keystate.is_pressed('shift') and keystate.is_pressed('q')
 
 def continuous_toggle_pressed():
     """Check if Ctrl+Shift+Space is pressed."""
-    return keyboard.is_pressed('ctrl') and keyboard.is_pressed('shift') and keyboard.is_pressed('space')
+    return keystate.is_pressed('ctrl') and keystate.is_pressed('shift') and keystate.is_pressed('space')
 
 # --- Console Window ---
 
@@ -930,7 +934,7 @@ class DbdudeV2tApp:
             return
 
         # Alt+Shift press/release behavior when not in continuous mode
-        pressed = keyboard.is_pressed('alt') and keyboard.is_pressed('shift')
+        pressed = keystate.is_pressed('alt') and keystate.is_pressed('shift')
 
         if pressed and not recording_event.is_set():
             print("Started recording...")
@@ -1214,7 +1218,7 @@ The icon appears in your top panel."""
         print(">> dbdude-v2t with System Tray")
         print(">> Hold Alt+Shift to RECORD; release to STOP & TRANSCRIBE.")
         print(">> Press Ctrl+Shift+Q to exit. Press Ctrl+Shift+Space to toggle continuous mode.")
-        print(">> NOTE: Requires sudo on Linux (keyboard module needs root)")
+        print(">> Runs as your user (hotkeys via /dev/input; needs input group membership)")
         print(f">> Logging: {'ENABLED (~/logs)' if ENABLE_LOGGING else 'DISABLED (use --log to enable)'}")
 
         # Start audio thread

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
-# Ubuntu 26.04 launcher - handles CUDA paths and runs with sudo
+# Ubuntu 26.04 launcher - handles CUDA paths; runs as the desktop user
+# (no sudo: hotkeys are read from /dev/input via the input group, and the
+# system tray needs the process on the user's session D-Bus - 26.04's dbus
+# refuses root connections)
 
 set -euo pipefail
 
@@ -37,27 +40,11 @@ else
     FINAL_LD_PATH="${LD_LIBRARY_PATH:-}"
 fi
 
-# Run with sudo, preserving the desktop session env the root process needs:
-# - QT_QPA_PLATFORM=wayland + WAYLAND_DISPLAY: Qt (tray/GUIs) talks to the
-#   compositor natively. Stock 26.04 no longer ships the xcb client libs the
-#   Qt "xcb" plugin needs (libxcb-icccm4 etc.), and the bundled wayland plugin
-#   has no missing deps — so native Wayland is the reliable path.
-# - DISPLAY + XAUTHORITY kept as a fallback for anything that still wants X11
-#   via XWayland (the GNOME cookie is at /run/user/<uid>/.mutter-Xwaylandauth.*
-#   and sudo strips XAUTHORITY by default).
-# - YDOTOOL_SOCKET: ydotoold runs as the desktop user; point the root-side
-#   ydotool client at the user's daemon socket.
-# - XDG_RUNTIME_DIR + PULSE_*: root reaches the user's PipeWire/Pulse session
-#   (USB mics are exposed there with rate/channel conversion; raw ALSA hw:
-#   devices are not) and the session D-Bus for the tray icon.
-USER_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-sudo QT_QPA_PLATFORM=wayland \
-     WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" \
-     DISPLAY="$DISPLAY" \
-     XAUTHORITY="${XAUTHORITY:-}" \
-     XDG_RUNTIME_DIR="$USER_RUNTIME_DIR" \
-     YDOTOOL_SOCKET="${YDOTOOL_SOCKET:-${USER_RUNTIME_DIR}/.ydotool_socket}" \
-     PULSE_SERVER="${PULSE_SERVER:-unix:${USER_RUNTIME_DIR}/pulse/native}" \
-     PULSE_COOKIE="${PULSE_COOKIE:-${HOME}/.config/pulse/cookie}" \
-     LD_LIBRARY_PATH="$FINAL_LD_PATH" \
-     "${VENV_PYTHON}" "${SCRIPT_DIR}/dbdude-v2t.py" "$@"
+# QT_QPA_PLATFORM=wayland: stock 26.04 no longer ships the xcb client libs the
+# Qt "xcb" plugin needs (libxcb-icccm4 etc.); the bundled wayland plugin has no
+# missing deps, so native Wayland is the reliable path. Everything else (audio,
+# session D-Bus for the tray, ydotoold socket) is inherited naturally from the
+# user's session.
+QT_QPA_PLATFORM=wayland \
+    LD_LIBRARY_PATH="$FINAL_LD_PATH" \
+    "${VENV_PYTHON}" "${SCRIPT_DIR}/dbdude-v2t.py" "$@"

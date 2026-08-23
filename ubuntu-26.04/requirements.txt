@@ -5,7 +5,6 @@ faster-whisper
 numpy
 scipy
 sounddevice
-keyboard
 ctranslate2
 regex
 PySide6
