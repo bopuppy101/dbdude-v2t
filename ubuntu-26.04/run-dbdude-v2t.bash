@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
 # Ubuntu 26.04 launcher - handles CUDA paths; runs as the desktop user
-# (no sudo: hotkeys are read from /dev/input via the input group, and the
+# (no sudo: hotkeys are read from /dev/input via the logind ACL that the
+# uaccess udev rule grants the active desktop user, and the
 # system tray needs the process on the user's session D-Bus - 26.04's dbus
 # refuses root connections)
 

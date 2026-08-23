@@ -15,16 +15,19 @@ echo "Installing system packages..."
 sudo apt update
 sudo apt install -y portaudio19-dev ydotool pulseaudio-utils python3-venv libxcb-cursor0
 
-# ydotoold needs write access to /dev/uinput (root:input 0660 by default, and
-# desktop users are not in the input group on stock 26.04). A uaccess udev rule
-# grants the logged-in user an ACL immediately; input group membership is the
-# durable fallback (takes effect at next login).
-echo "Granting user access to /dev/uinput..."
+# ydotoold needs write access to /dev/uinput, and the hotkey reader needs read
+# access to /dev/input/event* (both root:input 0660 by default, and desktop
+# users are not in the input group on stock 26.04). uaccess udev rules make
+# logind grant the active desktop user an ACL on the devices at login and
+# revoke it at logout - immediate effect, no group membership, no re-login.
+echo "Granting desktop-user access to /dev/uinput and /dev/input..."
 echo 'KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"' \
     | sudo tee /etc/udev/rules.d/70-uinput-uaccess.rules > /dev/null
+echo 'SUBSYSTEM=="input", KERNEL=="event*", TAG+="uaccess"' \
+    | sudo tee /etc/udev/rules.d/70-input-uaccess.rules > /dev/null
 sudo udevadm control --reload-rules
 sudo udevadm trigger --name-match=uinput
-sudo usermod -aG input "$USER"
+sudo udevadm trigger --subsystem-match=input
 
 # ydotool types via /dev/uinput through the ydotoold daemon; run it as a user
 # service so it starts on login. The launcher points the app at its socket.
@@ -89,6 +92,6 @@ echo ""
 echo "Or add this alias to ~/.bashrc:"
 echo "  alias rv='${SCRIPT_DIR}/run-dbdude-v2t.bash'"
 echo ""
-echo "NOTE: Runs as your user (no sudo). Hotkeys read /dev/input via the"
-echo "      input group - log out and back in once after first setup so the"
-echo "      group membership takes effect."
+echo "NOTE: Runs as your user (no sudo). Hotkeys read /dev/input via a"
+echo "      logind ACL granted to whoever is logged into the desktop -"
+echo "      effective immediately, per active session, no group needed."

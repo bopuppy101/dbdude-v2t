@@ -2,8 +2,9 @@
 """Root-free keyboard state tracking via /dev/input (evdev).
 
 Replaces the `keyboard` library, which refuses to run without root on Linux.
-Reading /dev/input/event* only needs membership in the `input` group, which
-setup.bash grants. A background thread follows key press/release events from
+Reading /dev/input/event* only needs the logind ACL that setup.bash's uaccess
+udev rule grants the active desktop user. A background thread follows key
+press/release events from
 every attached keyboard and maintains the set of currently-held keycodes;
 is_pressed() answers from that set, so it drops in for keyboard.is_pressed()
 in the app's 20ms poll loop.
@@ -135,8 +136,9 @@ def _reader_loop():
 def start():
     """Open keyboard devices and start the tracking thread.
 
-    Exits with guidance if no keyboard is readable (the usual cause: the user
-    is not in the `input` group yet, or has not re-logged-in since joining).
+    Exits with guidance if no keyboard is readable (the usual cause: the
+    uaccess udev rule is not installed, or this is not the active desktop
+    session, so logind has not granted the ACL).
     """
     global _started
     if _started:
@@ -145,8 +147,10 @@ def start():
     if not _devices:
         print("ERROR: no readable keyboard devices in /dev/input.", file=sys.stderr)
         if isinstance(err, PermissionError):
-            print("       Add yourself to the input group and log out/in:", file=sys.stderr)
-            print("         sudo usermod -aG input $USER", file=sys.stderr)
+            print("       Access is granted to the active desktop session by the udev", file=sys.stderr)
+            print("       rule /etc/udev/rules.d/70-input-uaccess.rules. If it is missing,", file=sys.stderr)
+            print("       re-run setup.bash; otherwise make sure you are running this from", file=sys.stderr)
+            print("       the logged-in desktop, not an SSH or su session.", file=sys.stderr)
         sys.exit(1)
     threading.Thread(target=_reader_loop, daemon=True, name='keystate').start()
     _started = True
