@@ -27,3 +27,8 @@ Thumbs.db
 
 # Claude Code session files / context saves
 .claude/
+
+# Internal working notes / local configs — not for the public repo
+docs/codex-desktop-handoff.md
+config.toml
+.codex/
