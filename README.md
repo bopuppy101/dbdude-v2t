@@ -110,6 +110,6 @@ Note: Ubuntu requires `sudo` for keyboard input detection.
 
 ## License
 
-[CC BY-NC 4.0](LICENSE) - Free for non-commercial use.
+[GPL-3.0-or-later](LICENSE) - Free and open source. You may use, modify, and redistribute it, including commercially; distributed versions must also be released under the GPL.
 
 Copyright (c) 2025-2026 Michael Foster / DBDude Inc.

@@ -1,5 +1,5 @@
 @echo off
-REM Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
+REM Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
 REM Double-click to launch dbdude-v2t, or pin to taskbar for quick access.
 
 cd /d "%~dp0"

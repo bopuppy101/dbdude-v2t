@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
+# Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
 """Unit tests for sleep/wake hardening pure helpers (macOS).
 
 Run from the macos/ dir (or anywhere):  python3 tests/test_sleepwake.py

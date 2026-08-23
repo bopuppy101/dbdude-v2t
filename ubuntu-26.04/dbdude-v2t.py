@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
+# Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
 # v6 - Ubuntu 26.04 version - uses ydotool for text output (Wayland-safe), no sudo needed
 # (hotkeys read from /dev/input via keystate.py; requires membership in the input group)
 # v6 adds: dynamic mappings loaded from JSON files

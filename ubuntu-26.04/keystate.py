@@ -1,4 +1,4 @@
-# Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
+# Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
 """Root-free keyboard state tracking via /dev/input (evdev).
 
 Replaces the `keyboard` library, which refuses to run without root on Linux.
