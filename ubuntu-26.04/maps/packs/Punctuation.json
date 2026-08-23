@@ -1,0 +1,18 @@
+{
+    "_name": "Punctuation",
+    "_description": "Spoken punctuation to symbols (e.g., 'question mark' to ?)",
+    "names": {
+        "pound sign": "#",
+        "hash sign": "#",
+        "question mark": "?",
+        "exclamation point": "!",
+        "exclamation mark": "!",
+        "dash": "-",
+        "hyphen": "-",
+        "double dash": "--",
+        "em dash": "—",
+        "underscore": "_",
+        "dunder": "__",
+        "double underscore": "__"
+    }
+}

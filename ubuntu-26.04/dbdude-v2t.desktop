@@ -1,0 +1,10 @@
+[Desktop Entry]
+# Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under CC BY-NC 4.0.
+# To install: update the paths below, then copy to ~/.local/share/applications/
+Name=dbdude-v2t
+Comment=Local voice-to-text transcription
+Exec=/CHANGE_THIS_PATH/ubuntu-26.04/run-dbdude-v2t.bash
+Icon=/CHANGE_THIS_PATH/ubuntu-26.04/icons/v2t.ico
+Type=Application
+Terminal=true
+Categories=Utility;Audio;
