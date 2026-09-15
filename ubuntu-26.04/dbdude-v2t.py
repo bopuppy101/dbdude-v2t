@@ -368,7 +368,10 @@ if ctranslate2.get_cuda_device_count() > 0:
 else:
     DEVICE = "cpu"
     COMPUTE_TYPE = "int8"
-    print("INFO: No NVIDIA GPU detected, using CPU mode (slower)", file=sys.stderr)
+    if os.environ.get('CUDA_VISIBLE_DEVICES') in ('', '-1'):
+        print("INFO: GPU acceleration disabled by CUDA_VISIBLE_DEVICES; using CPU mode", file=sys.stderr)
+    else:
+        print("INFO: No CUDA GPU available to voice2text; using CPU mode (slower)", file=sys.stderr)
 
 print(f"INFO: Loading Whisper Model ({MODEL_NAME})...", file=sys.stderr)
 try:

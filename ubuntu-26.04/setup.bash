@@ -30,11 +30,30 @@ sudo udevadm trigger --name-match=uinput
 sudo udevadm trigger --subsystem-match=input
 
 # ydotool types via /dev/uinput through the ydotoold daemon; run it as a user
-# service so it starts on login. The launcher points the app at its socket.
+# service started with the graphical desktop, after device ACLs are granted.
 echo "Enabling ydotool daemon (user service)..."
+mkdir -p "${HOME}/.config/systemd/user/ydotool.service.d"
+cat > "${HOME}/.config/systemd/user/ydotool.service.d/retry.conf" <<'EOF'
+[Unit]
+# Start with the graphical session, after logind grants desktop device access.
+After=graphical-session.target
+PartOf=graphical-session.target
+# Initial start plus one retry; never keep restarting indefinitely.
+StartLimitIntervalSec=infinity
+StartLimitBurst=2
+
+[Service]
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=
+WantedBy=graphical-session.target
+EOF
+systemctl --user daemon-reload
 systemctl --user reset-failed ydotool.service 2>/dev/null || true
-systemctl --user enable --now ydotool.service
-if ! systemctl --user is-active --quiet ydotool.service; then
+systemctl --user reenable ydotool.service
+if ! systemctl --user start ydotool.service || ! systemctl --user is-active --quiet ydotool.service; then
     echo "WARNING: ydotoold failed to start - check: systemctl --user status ydotool.service"
 fi
 

@@ -46,6 +46,12 @@ fi
 # missing deps, so native Wayland is the reliable path. Everything else (audio,
 # session D-Bus for the tray, ydotoold socket) is inherited naturally from the
 # user's session.
-QT_QPA_PLATFORM=wayland \
+# CUDA_VISIBLE_DEVICES="": keep Whisper off the GPU. dbdude-v2t.py autodetects
+# CUDA and takes it whenever a card is visible, ignoring the device setting;
+# hiding the card is the only switch. tiny/base run fine on CPU (int8), and
+# the ~0.5 GB of VRAM this frees is the difference between the 4090 fitting a
+# 32k context for the 27B model server and not.
+CUDA_VISIBLE_DEVICES="" \
+    QT_QPA_PLATFORM=wayland \
     LD_LIBRARY_PATH="$FINAL_LD_PATH" \
     "${VENV_PYTHON}" "${SCRIPT_DIR}/dbdude-v2t.py" "$@"
