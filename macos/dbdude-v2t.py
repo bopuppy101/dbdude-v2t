@@ -7,6 +7,7 @@ import os
 os.environ["PYTHONWARNINGS"] = "ignore::UserWarning"
 
 import sys
+from text_formatting import EXPLICIT_DOT, format_sentences
 import ctypes
 import numpy as np
 import mlx_whisper
@@ -278,8 +279,10 @@ def load_mappings():
         WILDCARD_MODE = data.get("wildcard_mode", "sql92")
         print(f"INFO: Wildcard mode: {WILDCARD_MODE}", flush=True)
         enabled_packs = data.get("enabled_packs", [])
-        if enabled_packs and packs_dir.exists():
-            for pack_file in packs_dir.glob("*.json"):
+        if enabled_packs:
+            pack_files = list((Path(__file__).parent / "maps" / "packs").glob("*.json"))
+            pack_files.extend(packs_dir.glob("*.json"))
+            for pack_file in pack_files:
                 try:
                     with open(pack_file, 'r', encoding='utf-8') as pf:
                         pack_data = json.load(pf)
@@ -370,14 +373,17 @@ def apply_mappings(text):
     def _replace(m):
         nonlocal strip_punct_used
         to_text = CUSTOM_MAP[m.group(1).lower()]
-        if to_text in STRIP_PUNCT_VALUES:
+        if to_text in STRIP_PUNCT_VALUES and to_text not in ('.', '!', '?'):
             strip_punct_used = True
         strip_before, strip_after = WHITESPACE_STRIP_MAP.get(to_text, (False, False))
-        prefix = STRIP_BEFORE if strip_before else ''
+        prefix = STRIP_BEFORE if strip_before or to_text in ('.', '!', '?') else ''
         suffix = STRIP_AFTER if strip_after else ''
-        return prefix + to_text + suffix
+        trailing = '' if to_text in ('.', '!', '?') else m.group(2)
+        if to_text == '.':
+            to_text = EXPLICIT_DOT
+        return prefix + to_text + suffix + trailing
 
-    text = name_re.sub(_replace, text)
+    text = re.sub(name_re.pattern + r'([.!?,;:]*)', _replace, text, flags=name_re.flags)
     text = re.sub(r'\s*\x01', '', text)
     text = re.sub(r'\x02\s*', '', text)
     if text.endswith('.') or text.endswith('!') or text.endswith('?') or text.endswith(',') or text.endswith(';') or text.endswith(':'):
@@ -430,7 +436,9 @@ def transcription_worker():
             print(f"Transcribed: {raw}", flush=True)
             text = apply_mappings(raw)
             text = apply_wildcard_mappings(text)
+            text = format_sentences(text)
             text = apply_rules(text)
+            text = text.replace(EXPLICIT_DOT, '.')
             print(f"Mapped to:   {text}", flush=True)
             if V2T_TEST_HOOKS:
                 # SLEEPWAKE-TEST: never type into the focused window during a test run

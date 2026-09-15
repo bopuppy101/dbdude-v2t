@@ -13,6 +13,8 @@
         "em dash": "—",
         "underscore": "_",
         "dunder": "__",
-        "double underscore": "__"
+        "double underscore": "__",
+        "dot": ".",
+        "bang": "!"
     }
 }

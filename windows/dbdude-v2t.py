@@ -11,6 +11,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 # Add NVIDIA CUDA DLL paths when running from a venv with pip-installed CUDA packages
 import sys
+from text_formatting import EXPLICIT_DOT, format_sentences
 _site_packages = os.path.join(sys.prefix, "Lib", "site-packages")
 for _nvidia_lib in ["nvidia/cublas/bin", "nvidia/cudnn/bin"]:
     _dll_path = os.path.join(_site_packages, _nvidia_lib)
@@ -590,22 +591,26 @@ def replace_misheard_names(text, name_re):
         to_text = NAME_MAP[from_text.lower()]
 
         # Track if a strip_punctuation mapping was used
-        if to_text in CUSTOM_SYMBOL_MAP.values():
+        if to_text in CUSTOM_SYMBOL_MAP.values() and to_text not in ('.', '!', '?'):
             _strip_punct_used = True
 
         # Check if this replacement has whitespace strip flags
         strip_before, strip_after = WHITESPACE_STRIP_MAP.get(to_text, (False, False))
 
         # Add markers for later whitespace stripping
-        prefix = STRIP_BEFORE if strip_before else ''
+        prefix = STRIP_BEFORE if strip_before or to_text in ('.', '!', '?') else ''
         suffix = STRIP_AFTER if strip_after else ''
 
         if _DEBUG_MODE:
             print(f"DEBUG: Mapping '{from_text}' → '{to_text}'", file=sys.stderr)
-        return prefix + to_text + suffix
+        trailing = '' if to_text in ('.', '!', '?') else m.group(2)
+        if to_text == '.':
+            to_text = EXPLICIT_DOT
+        return prefix + to_text + suffix + trailing
 
     try:
-        text = name_re.sub(replace_and_log, text, timeout=0.5)
+        text = regex.sub(name_re.pattern + r'([.!?,;:]*)', replace_and_log,
+                         text, flags=name_re.flags, timeout=0.5)
         # Strip whitespace around markers, then remove markers
         text = regex.sub(r'\s*\x01', '', text)  # Strip space before + remove marker
         text = regex.sub(r'\x02\s*', '', text)  # Remove marker + strip space after
@@ -765,11 +770,12 @@ def process_and_validate_text(raw_text):
     text = apply_wildcard_mappings(text)
     if _DEBUG_MODE:
         print(f"DEBUG: After wildcards: '{text}'", file=sys.stderr)
+    text = format_sentences(text)
     text = strip_trailing_period_if_symbol_map(text)
     if _DEBUG_MODE:
         print(f"DEBUG: After strip_period: '{text}'", file=sys.stderr)
     text = apply_rules(text)
-    return text
+    return text.replace(EXPLICIT_DOT, '.')
 
 
 def type_with_ahk(text, type_text_exe):

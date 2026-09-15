@@ -16,6 +16,24 @@ Local, privacy-first voice-to-text for your desktop. Hold a hotkey to record, re
 - **Configurator GUI** - settings, model selection, audio device selection
 - **Continuous mode** - toggle on for long-form dictation
 
+### Dictation punctuation
+
+All platform versions omit the automatic final period for a single sentence,
+regardless of its length. Multiple sentences keep punctuation and have their
+sentence starts capitalized. Sentence detection uses the recognizer's punctuation
+and accounts for common abbreviations; ambiguous abbreviations may still need correction.
+Question marks and exclamation marks are preserved.
+
+Enable the **Punctuation** mapping pack, or add individual custom mappings, to use
+`question mark` → `?`, `exclamation point` / `bang` → `!`, and `dot` → `.`.
+Spoken `dot` preserves an explicitly requested period even for a single sentence.
+Punctuation attached by the recognizer to a spoken command is replaced along with
+the command, so `bang!` produces `!`; `bang bang` still produces `!!`.
+Windows and macOS custom formatting rules continue to run after sentence formatting.
+
+Restart the app after updating the Python code. Mapping-only edits can be loaded
+with **Reload Mapping Files**.
+
 ## Platforms
 
 | Platform | Hotkey | Text Output | AI Engine |

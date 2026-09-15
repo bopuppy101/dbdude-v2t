@@ -206,7 +206,9 @@ def get_available_packs():
     packs = {}
     packs_dir = get_user_data_dir() / "packs"
     packs_dir.mkdir(parents=True, exist_ok=True)
-    for pack_file in packs_dir.glob("*.json"):
+    pack_files = list((Path(__file__).parent / "maps" / "packs").glob("*.json"))
+    pack_files.extend(packs_dir.glob("*.json"))
+    for pack_file in pack_files:
         try:
             with open(pack_file, 'r', encoding='utf-8') as f:
                 pack_data = json.load(f)

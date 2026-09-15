@@ -23,6 +23,7 @@ import argparse
 import numpy as np
 import sounddevice as sd
 import keystate
+from text_formatting import EXPLICIT_DOT, format_sentences
 from scipy.signal import resample
 from faster_whisper import WhisperModel
 import ctranslate2
@@ -297,17 +298,23 @@ def replace_misheard_names(text):
         from_text = m.group(1)
         to_text = NAME_MAP[from_text.lower()]
 
-        if to_text in CUSTOM_SYMBOL_MAP.values():
+        if to_text in CUSTOM_SYMBOL_MAP.values() and to_text not in ('.', '!', '?'):
             _strip_punct_used = True
 
         strip_before, strip_after = WHITESPACE_STRIP_MAP.get(to_text, (False, False))
-        prefix = STRIP_BEFORE if strip_before else ''
+        prefix = STRIP_BEFORE if strip_before or to_text in ('.', '!', '?') else ''
         suffix = STRIP_AFTER if strip_after else ''
         if _DEBUG_MODE:
             print(f"DEBUG: Mapping '{from_text}' → '{to_text}'", file=sys.stderr)
-        return prefix + to_text + suffix
+        # Whisper can render a spoken command as "bang!" or "question mark?".
+        # The requested symbol replaces that attached punctuation as well.
+        trailing = '' if to_text in ('.', '!', '?') else m.group(2)
+        if to_text == '.':
+            to_text = EXPLICIT_DOT
+        return prefix + to_text + suffix + trailing
 
-    text = NAME_RE.sub(_replace_and_log, text)
+    text = regex.sub(NAME_RE.pattern + r'([.!?,;:]*)', _replace_and_log,
+                     text, flags=NAME_RE.flags)
     text = regex.sub(r'\s*\x01', '', text)
     text = regex.sub(r'\x02\s*', '', text)
     return text
@@ -421,16 +428,12 @@ def process_and_validate_text(raw_text):
     text = apply_wildcard_mappings(text)  # Apply SQL-92 wildcard patterns
     if _DEBUG_MODE:
         print(f"DEBUG: After wildcards: '{text}'", file=sys.stderr)
+    text = regex.sub(r"\s+([#?!])", r"\1", text)  # Remove space before punctuation
+    text = format_sentences(text)
     text = strip_trailing_period_if_symbol_map(text)  # Remove period if ends with symbol
     if _DEBUG_MODE:
         print(f"DEBUG: After strip_period: '{text}'", file=sys.stderr)
-    text = regex.sub(r"\s+([#?!])", r"\1", text)  # Remove space before punctuation
-    # Count words - if 3 or fewer, strip trailing punctuation (likely an edit/insertion)
-    word_count = len(text.split())
-    if word_count <= 3:
-        text = text.rstrip('.!?,;:')
-    elif not text.endswith(('.', '!', '?')):
-        text += '.'
+    text = text.replace(EXPLICIT_DOT, '.')
     print(f"INFO: Final processed text: '{text}'")
     return text
 
