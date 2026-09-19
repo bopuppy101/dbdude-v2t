@@ -63,7 +63,7 @@ class PlatformFormattingTests(unittest.TestCase):
             'First sentence dot second sentence dot.': 'First sentence. Second sentence.',
             'Go. stop.': 'Go. Stop.',
         }
-        for platform in ('ubuntu', 'ubuntu-26.04', 'windows', 'macos'):
+        for platform in ('ubuntu', 'ubuntu-26.04', 'omarchy', 'windows', 'macos'):
             process = load_pipeline(platform)
             for raw, expected in examples.items():
                 with self.subTest(platform=platform, raw=raw):
