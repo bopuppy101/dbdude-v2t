@@ -130,6 +130,58 @@ def show_error_dialog(title: str, message: str):
 # Default model to fall back to if settings.json has invalid model
 # "base" is bundled with the installer and always available
 DEFAULT_MODEL = "base"
+
+# --- R2T2 (Confucius4-R2T2) support ---
+# 'r2t2' in models.json selects NetEase Youdao's Confucius4-R2T2, a 2B
+# Qwen3-ASR fine-tune, run through the qwen-asr transformers backend in
+# offline (whole-clip) mode. Nothing here is imported unless 'r2t2' is the
+# selected model, so the Whisper path is unchanged. Weights download from
+# Hugging Face on first use (~4 GB bf16) under NetEase's Model Use License,
+# so they are never bundled with this repo.
+R2T2_MODEL_NAME = "r2t2"
+R2T2_REPO = "netease-youdao/Confucius4-R2T2"
+# qwen-asr wants language *names*, not ISO codes. Passing a language makes the
+# model emit transcript text only. Unmapped codes fall back to auto-detect.
+R2T2_LANGUAGE_NAMES = {
+    'en': 'English', 'zh': 'Chinese', 'es': 'Spanish', 'fr': 'French',
+    'de': 'German', 'it': 'Italian', 'pt': 'Portuguese', 'nl': 'Dutch',
+    'ru': 'Russian', 'ja': 'Japanese', 'ko': 'Korean', 'ar': 'Arabic',
+}
+
+def load_r2t2_model():
+    """Load Confucius4-R2T2 via qwen-asr. Returns the model, or None on failure."""
+    try:
+        import torch
+        from qwen_asr import Qwen3ASRModel
+    except ImportError as e:
+        print(f"ERROR: The r2t2 model needs torch and qwen-asr ({e}).", file=sys.stderr)
+        print("       Install them with: .\\setup.ps1 -WithR2T2", file=sys.stderr)
+        return None
+    if torch.cuda.is_available():
+        device_map, dtype = "cuda:0", torch.bfloat16
+        print("INFO: NVIDIA GPU detected, loading R2T2 in bf16 on CUDA", file=sys.stderr)
+    else:
+        device_map, dtype = "cpu", torch.float32
+        print("INFO: No CUDA GPU available to torch; loading R2T2 on CPU (slow, ~8 GB RAM)", file=sys.stderr)
+    print(f"INFO: Loading R2T2 model ({R2T2_REPO})...", file=sys.stderr)
+    try:
+        return Qwen3ASRModel.from_pretrained(
+            R2T2_REPO,
+            dtype=dtype,
+            device_map=device_map,
+            max_inference_batch_size=1,
+            max_new_tokens=512,
+        )
+    except Exception as e:
+        print(f"ERROR: Could not load R2T2 model: {e}", file=sys.stderr)
+        return None
+
+def r2t2_transcribe(model, audio_np, language_code):
+    """Transcribe one mono float32 clip at SAMPLERATE with R2T2; return raw text."""
+    results = model.transcribe(audio=[(audio_np, SAMPLERATE)],
+                               language=[R2T2_LANGUAGE_NAMES.get(language_code)])
+    return ' '.join(r.text for r in results)
+
 VALID_LANGUAGES = [
     ('English', 'en'), ('Spanish', 'es'), ('French', 'fr'), ('German', 'de'),
     ('Italian', 'it'), ('Portuguese', 'pt'), ('Dutch', 'nl'), ('Russian', 'ru'),
@@ -1264,6 +1316,8 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
     # Load model (with fallback to DEFAULT_MODEL if requested model fails)
     def try_load_model(name):
         """Attempt to load a Whisper model by name. Returns model or None."""
+        if name == R2T2_MODEL_NAME:
+            return load_r2t2_model()
         local_path = os.path.realpath(os.path.join(str(get_app_dir()), "models", f"faster-whisper-{name}"))
         try:
             if os.path.exists(local_path):
@@ -1290,7 +1344,10 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
         messagebox.showerror("Error", f"Could not load Whisper Model.\nTried: {model_name}, {DEFAULT_MODEL}")
         return
 
-    print(f"INFO: Model Loaded. (quantization: {compute_type})", file=sys.stderr)
+    if model_name == R2T2_MODEL_NAME:
+        print("INFO: Model Loaded. (R2T2)", file=sys.stderr)
+    else:
+        print(f"INFO: Model Loaded. (quantization: {compute_type})", file=sys.stderr)
 
     # Verify AutoHotkey setup
     if not os.path.exists(type_text_exe):
@@ -1410,8 +1467,11 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
 
         try:
             transcribe_start = time.time()
-            segments, info = model.transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=language, task='transcribe')
-            raw = ' '.join(seg.text for seg in segments)  # Transcription happens here (generator)
+            if model_name == R2T2_MODEL_NAME:
+                raw = r2t2_transcribe(model, audio_np, language)
+            else:
+                segments, info = model.transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=language, task='transcribe')
+                raw = ' '.join(seg.text for seg in segments)  # Transcription happens here (generator)
             transcribe_elapsed = time.time() - transcribe_start
             print(f"[{datetime.now().strftime('%H:%M:%S')}] INFO: {duration:.2f}s of audio transcribed in {transcribe_elapsed:.3f}s")
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Transcribed: {raw.strip()}")

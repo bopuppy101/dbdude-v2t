@@ -158,7 +158,9 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 
 
 # Available models for MLX Whisper
-VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'large-v2', 'large-v3']
+# Whisper sizes (mlx-whisper) plus 'r2t2' (NetEase Youdao Confucius4-R2T2 via
+# mlx-audio; needs `bash setup.bash --with-r2t2`)
+VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'large-v2', 'large-v3', 'r2t2']
 
 # Available languages (subset of most common)
 VALID_LANGUAGES = [

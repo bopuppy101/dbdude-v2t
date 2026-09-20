@@ -1,6 +1,10 @@
 # dbdude-v2t Windows Setup
 # Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
 
+# -WithR2T2: also install the optional R2T2 (Confucius4-R2T2) model stack
+# (PyTorch CUDA build + qwen-asr, several GB). Whisper works without it.
+param([switch]$WithR2T2)
+
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $venvPath = Join-Path $ScriptDir "venv"
@@ -45,6 +49,21 @@ if ($hasNvidia) {
 } else {
     Write-Host ""
     Write-Host "No NVIDIA GPU detected. Skipping CUDA packages (will use CPU mode)."
+}
+
+# Optional R2T2 stack. torch comes from the PyTorch cu128 index so it matches
+# the CUDA 12 runtime libs faster-whisper already uses; the CPU-only torch is
+# used when there is no NVIDIA GPU.
+if ($WithR2T2) {
+    Write-Host ""
+    Write-Host "Installing R2T2 (Confucius4-R2T2) model stack..."
+    if ($hasNvidia) {
+        & $venvPython -m pip install torch --index-url https://download.pytorch.org/whl/cu128
+    } else {
+        & $venvPython -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+    }
+    & $venvPython -m pip install -r (Join-Path $ScriptDir "requirements-r2t2.txt")
+    Write-Host "R2T2 weights (~4 GB) download from Hugging Face on first launch with model 'r2t2'."
 }
 
 # Create logs directory

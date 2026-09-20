@@ -86,6 +86,13 @@ cd windows
 .\venv\Scripts\python.exe dbdude-v2t.py
 ```
 
+#### Optional: R2T2 model (experimental)
+
+Windows can also run [Confucius4-R2T2](https://huggingface.co/netease-youdao/Confucius4-R2T2)
+(see the Omarchy section below for what it is). Install the extra stack with `.\setup.ps1 -WithR2T2`,
+then pick `r2t2` in the Configurator. An NVIDIA GPU is strongly recommended; the weights (about 4 GB)
+download from Hugging Face on first launch. Whisper models are unaffected unless `r2t2` is selected.
+
 ### macOS
 
 ```bash
@@ -102,6 +109,14 @@ python3 dbdude-v2t.py
 ```
 
 macOS will prompt for Accessibility and Microphone permissions on first use. Grant both for dbdude-v2t to function.
+
+#### Optional: R2T2 model (experimental)
+
+macOS can also run [Confucius4-R2T2](https://huggingface.co/netease-youdao/Confucius4-R2T2)
+(see the Omarchy section below for what it is) natively on Apple Silicon through `mlx-audio`, using a
+community 4-bit MLX conversion. Install the extra stack with `bash setup.bash --with-r2t2`, then pick
+`r2t2` in the Configurator. The weights (about 1.5 GB) download from Hugging Face on the first
+transcription. Whisper models are unaffected unless `r2t2` is selected.
 
 ### Ubuntu
 

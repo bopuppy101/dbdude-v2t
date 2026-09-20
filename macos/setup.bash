@@ -6,6 +6,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# --with-r2t2: also install the optional R2T2 (Confucius4-R2T2) model stack
+# (mlx-audio). Whisper works without it.
+WITH_R2T2=0
+for arg in "$@"; do
+    case "$arg" in
+        --with-r2t2) WITH_R2T2=1 ;;
+        *) echo "Unknown option: $arg (supported: --with-r2t2)"; exit 1 ;;
+    esac
+done
+
 echo "=== dbdude-v2t macOS Setup ==="
 
 # Pick a Python 3.10+ interpreter.
@@ -49,6 +59,13 @@ echo "Installing Python packages (this may take several minutes)..."
 source "${SCRIPT_DIR}/venv/bin/activate"
 pip install -q --upgrade pip
 pip install -q -r "${SCRIPT_DIR}/requirements.txt"
+
+# Optional R2T2 stack (mlx-audio runs the MLX conversion of Confucius4-R2T2).
+if [ "$WITH_R2T2" = "1" ]; then
+    echo "Installing R2T2 (Confucius4-R2T2) model stack..."
+    pip install -q -r "${SCRIPT_DIR}/requirements-r2t2.txt"
+    echo "R2T2 weights (~1.5 GB) download from Hugging Face on first transcription with model 'r2t2'."
+fi
 
 echo ""
 
