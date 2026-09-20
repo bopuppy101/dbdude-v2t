@@ -159,6 +159,24 @@ tray's pinned list in `~/.config/omarchy/shell.json`:
 { "id": "omarchy.tray", "pinned": ["dbdude-v2t.py"] }
 ```
 
+#### Optional: R2T2 model (experimental)
+
+The Omarchy dialect can also run [Confucius4-R2T2](https://huggingface.co/netease-youdao/Confucius4-R2T2),
+NetEase Youdao's 2B-parameter Qwen3-ASR fine-tune, as an alternative to Whisper. It runs in
+offline (whole-clip) mode through the `qwen-asr` transformers backend, so each push-to-talk
+clip is transcribed as one unit, the same as with Whisper. Install the extra stack (PyTorch plus
+`qwen-asr`, several GB), then pick `r2t2` in the Configurator or launch with `--model r2t2`:
+
+```bash
+cd omarchy
+bash setup.bash --with-r2t2
+./run-dbdude-v2t.bash --model r2t2
+```
+
+The weights (about 4 GB) download from Hugging Face on first use and are covered by NetEase's
+Model Use License, not this project's GPL. An NVIDIA GPU is strongly recommended; CPU mode works
+but is slow.
+
 ## License
 
 [GPL-3.0-or-later](LICENSE) - Free and open source. You may use, modify, and redistribute it, including commercially; distributed versions must also be released under the GPL.

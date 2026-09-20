@@ -1,0 +1,9 @@
+# Optional: R2T2 (NetEase Youdao Confucius4-R2T2) model support for Omarchy.
+# Install with: bash setup.bash --with-r2t2
+# (setup.bash installs torch first from the PyTorch cu128 or cpu index.)
+#
+# qwen-asr provides the Qwen3ASRModel transformers backend used to run
+# Confucius4-R2T2 in offline (whole-clip) mode. Model weights download from
+# Hugging Face on first use under NetEase's Model Use License.
+
+qwen-asr

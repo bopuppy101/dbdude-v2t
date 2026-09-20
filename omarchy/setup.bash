@@ -6,6 +6,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# --with-r2t2: also install the optional R2T2 (Confucius4-R2T2) model stack
+# (PyTorch CUDA build + qwen-asr, several GB). Whisper works without it.
+WITH_R2T2=0
+for arg in "$@"; do
+    case "$arg" in
+        --with-r2t2) WITH_R2T2=1 ;;
+        *) echo "Unknown option: $arg (supported: --with-r2t2)"; exit 1 ;;
+    esac
+done
+
 echo "=== faster-whisper Omarchy Setup ==="
 
 # System dependencies
@@ -103,6 +113,21 @@ if command -v nvidia-smi &> /dev/null; then
 else
     echo ""
     echo "No NVIDIA GPU detected. Skipping CUDA packages (will use CPU mode)."
+fi
+
+# Optional R2T2 stack. torch comes from the PyTorch cu128 index so it matches
+# the CUDA 12 runtime libs faster-whisper already uses; the CPU-only torch is
+# used when there is no NVIDIA GPU.
+if [ "$WITH_R2T2" = "1" ]; then
+    echo ""
+    echo "Installing R2T2 (Confucius4-R2T2) model stack..."
+    if command -v nvidia-smi &> /dev/null; then
+        pip install torch --index-url https://download.pytorch.org/whl/cu128
+    else
+        pip install torch --index-url https://download.pytorch.org/whl/cpu
+    fi
+    pip install -r "${SCRIPT_DIR}/requirements-r2t2.txt"
+    echo "R2T2 weights (~4 GB) download from Hugging Face on first launch with model 'r2t2'."
 fi
 
 # Make launcher executable

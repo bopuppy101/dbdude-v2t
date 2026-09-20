@@ -163,8 +163,9 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 """
 
 
-# Available models for faster-whisper
-VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'large-v2', 'large-v3']
+# Available models: faster-whisper sizes plus 'r2t2' (NetEase Youdao
+# Confucius4-R2T2; needs `bash setup.bash --with-r2t2`)
+VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'large-v2', 'large-v3', 'r2t2']
 
 # Available languages (subset of most common)
 VALID_LANGUAGES = [

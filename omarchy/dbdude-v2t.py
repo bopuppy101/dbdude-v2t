@@ -33,11 +33,13 @@ from PySide6.QtGui import QIcon, QAction, QFont
 from PySide6.QtCore import QTimer, QFileSystemWatcher, Signal, QObject, Qt
 
 # --- Command-line Arguments ---
-VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'large-v2', 'large-v3']
+# Whisper sizes (faster-whisper) plus 'r2t2': NetEase Youdao Confucius4-R2T2, a
+# 2B-parameter Qwen3-ASR fine-tune run through the qwen-asr transformers backend.
+VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'large-v2', 'large-v3', 'r2t2']
 parser = argparse.ArgumentParser(description='Voice-to-text transcription with hotkeys')
 parser.add_argument('--log', action='store_true', help='Enable logging transcriptions to ~/logs')
 parser.add_argument('--no-log', action='store_true', help='Disable logging (overrides settings)')
-parser.add_argument('--model', choices=VALID_MODELS, default=None, help='Whisper model size (default: from settings or base)')
+parser.add_argument('--model', choices=VALID_MODELS, default=None, help='Whisper model size or r2t2 (default: from settings or base)')
 parser.add_argument('--debug', action='store_true', help='Enable debug output for mapping steps')
 args = parser.parse_args()
 
@@ -360,31 +362,91 @@ def strip_trailing_period_if_symbol_map(text):
 # Check for bundled model first, else download from HuggingFace
 LOCAL_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", f"faster-whisper-{MODEL_NAME}")
 
-# Detect GPU availability
-if ctranslate2.get_cuda_device_count() > 0:
-    DEVICE = "cuda"
-    COMPUTE_TYPE = "float16"
-    print("INFO: NVIDIA GPU detected, using CUDA acceleration", file=sys.stderr)
-else:
-    DEVICE = "cpu"
-    COMPUTE_TYPE = "int8"
-    if os.environ.get('CUDA_VISIBLE_DEVICES') in ('', '-1'):
-        print("INFO: GPU acceleration disabled by CUDA_VISIBLE_DEVICES; using CPU mode", file=sys.stderr)
-    else:
-        print("INFO: No CUDA GPU available to voice2text; using CPU mode (slower)", file=sys.stderr)
+# --- R2T2 (Confucius4-R2T2) support ---
+# Hugging Face repo of the weights. Downloaded on first use into the HF cache
+# (~4 GB bf16). The weights are under NetEase's Model Use License, so they are
+# never bundled with this repo.
+R2T2_REPO = "netease-youdao/Confucius4-R2T2"
+# qwen-asr wants language *names*, not ISO codes. Passing a language makes the
+# model emit transcript text only, which is what dictation wants. Unmapped
+# codes fall back to None (auto-detect).
+R2T2_LANGUAGE_NAMES = {
+    'en': 'English', 'zh': 'Chinese', 'es': 'Spanish', 'fr': 'French',
+    'de': 'German', 'it': 'Italian', 'pt': 'Portuguese', 'nl': 'Dutch',
+    'ru': 'Russian', 'ja': 'Japanese', 'ko': 'Korean', 'ar': 'Arabic',
+}
+R2T2_LANGUAGE = R2T2_LANGUAGE_NAMES.get(_settings.get('language'))
+USE_R2T2 = (MODEL_NAME == 'r2t2')
 
-print(f"INFO: Loading Whisper Model ({MODEL_NAME})...", file=sys.stderr)
-try:
-    if os.path.exists(LOCAL_MODEL_PATH):
-        print(f"INFO: Using bundled model at {LOCAL_MODEL_PATH}", file=sys.stderr)
-        model = WhisperModel(LOCAL_MODEL_PATH, device=DEVICE, compute_type=COMPUTE_TYPE)
+def _load_r2t2_model():
+    """Load Confucius4-R2T2 via the qwen-asr transformers backend.
+
+    Offline (whole-clip) mode only: push-to-talk records a full utterance and
+    transcribes it once, so R2T2's streaming decoder (vLLM-only) is not needed.
+    """
+    try:
+        import torch
+        from qwen_asr import Qwen3ASRModel
+    except ImportError as e:
+        print(f"ERROR: The r2t2 model needs torch and qwen-asr ({e}).", file=sys.stderr)
+        print("       Install them with: bash setup.bash --with-r2t2", file=sys.stderr)
+        sys.exit(1)
+    if torch.cuda.is_available():
+        device_map, dtype = "cuda:0", torch.bfloat16
+        print("INFO: NVIDIA GPU detected, loading R2T2 in bf16 on CUDA", file=sys.stderr)
     else:
-        print(f"INFO: Bundled model not found, downloading {MODEL_NAME} from HuggingFace...", file=sys.stderr)
-        model = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE)
-    print("INFO: Model Loaded.", file=sys.stderr)
-except Exception as e:
-    print(f"ERROR: Could not load Whisper Model: {e}", file=sys.stderr)
-    sys.exit(1)
+        device_map, dtype = "cpu", torch.float32
+        print("INFO: No CUDA GPU available to torch; loading R2T2 on CPU (slow, ~8 GB RAM)", file=sys.stderr)
+    print(f"INFO: Loading R2T2 model ({R2T2_REPO})...", file=sys.stderr)
+    return Qwen3ASRModel.from_pretrained(
+        R2T2_REPO,
+        dtype=dtype,
+        device_map=device_map,
+        max_inference_batch_size=1,
+        max_new_tokens=512,
+    )
+
+if USE_R2T2:
+    try:
+        model = _load_r2t2_model()
+        print("INFO: Model Loaded.", file=sys.stderr)
+    except Exception as e:
+        print(f"ERROR: Could not load R2T2 Model: {e}", file=sys.stderr)
+        sys.exit(1)
+else:
+    # Detect GPU availability
+    if ctranslate2.get_cuda_device_count() > 0:
+        DEVICE = "cuda"
+        COMPUTE_TYPE = "float16"
+        print("INFO: NVIDIA GPU detected, using CUDA acceleration", file=sys.stderr)
+    else:
+        DEVICE = "cpu"
+        COMPUTE_TYPE = "int8"
+        if os.environ.get('CUDA_VISIBLE_DEVICES') in ('', '-1'):
+            print("INFO: GPU acceleration disabled by CUDA_VISIBLE_DEVICES; using CPU mode", file=sys.stderr)
+        else:
+            print("INFO: No CUDA GPU available to voice2text; using CPU mode (slower)", file=sys.stderr)
+
+    print(f"INFO: Loading Whisper Model ({MODEL_NAME})...", file=sys.stderr)
+    try:
+        if os.path.exists(LOCAL_MODEL_PATH):
+            print(f"INFO: Using bundled model at {LOCAL_MODEL_PATH}", file=sys.stderr)
+            model = WhisperModel(LOCAL_MODEL_PATH, device=DEVICE, compute_type=COMPUTE_TYPE)
+        else:
+            print(f"INFO: Bundled model not found, downloading {MODEL_NAME} from HuggingFace...", file=sys.stderr)
+            model = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE)
+        print("INFO: Model Loaded.", file=sys.stderr)
+    except Exception as e:
+        print(f"ERROR: Could not load Whisper Model: {e}", file=sys.stderr)
+        sys.exit(1)
+
+def transcribe_audio(audio_np):
+    """Return the raw transcript for a mono float32 clip at WHISPER_SAMPLERATE."""
+    if USE_R2T2:
+        results = model.transcribe(audio=[(audio_np, WHISPER_SAMPLERATE)], language=[R2T2_LANGUAGE])
+        return ' '.join(r.text for r in results)
+    segments, info = model.transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=None, task='transcribe')
+    return ' '.join(seg.text for seg in segments)
 
 # Verify ydotool is available and its daemon socket is reachable.
 # ydotoold runs as the desktop user while this app runs as root, so the
@@ -511,8 +573,7 @@ def process_and_output(buffer_list):
 
     print(f"INFO: Transcribing ({duration:.2f}s)...")
     try:
-        segments, info = model.transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=None, task='transcribe')
-        raw = ' '.join(seg.text for seg in segments)
+        raw = transcribe_audio(audio_np)
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Transcribed: {raw.strip()}")
         final = process_and_validate_text(raw)
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Mapped to:   {final}")
