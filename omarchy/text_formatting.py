@@ -13,6 +13,21 @@ _ABBREVIATIONS = {
 }
 
 
+def strip_trailing_pipe(text):
+    """Drop a '|' the ASR model appends when the audio ends mid-word.
+
+    r2t2 (Qwen3-ASR) marks a chopped final word with '|'. A pipe the user
+    dictates on purpose arrives as the word "pipe" and is mapped to '|' later,
+    so a raw trailing pipe is never intentional. String ops only; never raises.
+    """
+    if not isinstance(text, str):
+        return text
+    out = text.rstrip()
+    while out.endswith('|'):
+        out = out[:-1].rstrip()
+    return out
+
+
 def format_sentences(text):
     """Omit a single sentence's final period; capitalize longer dictation.
 

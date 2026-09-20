@@ -23,7 +23,7 @@ import argparse
 import numpy as np
 import sounddevice as sd
 import keystate
-from text_formatting import EXPLICIT_DOT, format_sentences
+from text_formatting import EXPLICIT_DOT, format_sentences, strip_trailing_pipe
 from scipy.signal import resample
 from faster_whisper import WhisperModel
 import ctranslate2
@@ -482,6 +482,9 @@ def process_and_validate_text(raw_text):
     if not raw_text or len(raw_text.strip()) < MIN_TRANSCRIPTION_LENGTH:
         return None
     text = regex.sub(r"\s+", ' ', raw_text).strip()
+    text = strip_trailing_pipe(text)  # r2t2 marks a chopped final word with '|'
+    if len(text) < MIN_TRANSCRIPTION_LENGTH:
+        return None
     if _DEBUG_MODE:
         print(f"DEBUG: After dedupe_spaces: '{text}'", file=sys.stderr)
     text = replace_spoken_email(text)

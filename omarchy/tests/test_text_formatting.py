@@ -6,7 +6,7 @@ import unittest
 
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
-from text_formatting import EXPLICIT_DOT, format_sentences
+from text_formatting import EXPLICIT_DOT, format_sentences, strip_trailing_pipe
 
 
 class SentenceFormattingTests(unittest.TestCase):
@@ -47,10 +47,17 @@ class SentenceFormattingTests(unittest.TestCase):
             'apply_wildcard_mappings': lambda text: text,
             'strip_trailing_period_if_symbol_map': lambda text: text,
             'format_sentences': format_sentences,
+            'strip_trailing_pipe': strip_trailing_pipe,
         }
         exec(compile(ast.Module(body=[function], type_ignores=[]), '<pipeline>', 'exec'), namespace)
         process = namespace['process_and_validate_text']
         self.assertEqual(process('This is a single sentence.'), 'This is a single sentence')
+        # r2t2 marks a chopped final word with '|'; it must never reach the keyboard.
+        self.assertEqual(process("This is too much trouble. It's not worth|"),
+                         "This is too much trouble. It's not worth.")
+        self.assertEqual(process('I mean to that |'), 'I mean to that')
+        self.assertIsNone(process('|'))
+        self.assertIsNone(process(' | '))
         self.assertEqual(process('This is one sentence. do not forget this one.'),
                          'This is one sentence. Do not forget this one.')
         self.assertIsNone(process('   '))
@@ -83,3 +90,26 @@ class SentenceFormattingTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class StripTrailingPipeTests(unittest.TestCase):
+    def test_strips_only_trailing_pipe(self):
+        cases = {
+            "It's not worth|": "It's not worth",
+            "I mean to that |": "I mean to that",
+            "trailing spaces| ": "trailing spaces",
+            "double||": "double",
+            "|": "",
+            "": "",
+            "echo a | grep b": "echo a | grep b",
+            "plain text": "plain text",
+            "ends with period.": "ends with period.",
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(strip_trailing_pipe(raw), expected)
+
+    def test_never_raises_on_non_strings(self):
+        for value in (None, 42, b"bytes|", ["list"]):
+            with self.subTest(value=value):
+                self.assertIs(strip_trailing_pipe(value), value)
