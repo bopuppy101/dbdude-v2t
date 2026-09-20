@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QGroupBox, QScrollArea, QComboBox
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPalette, QColor
+from PySide6.QtGui import QPalette, QColor, QKeySequence, QShortcut
 
 
 def create_app_palette():
@@ -222,6 +222,19 @@ class MappingRulesWindow(QMainWindow):
         packs_tab = QWidget()
         packs_tab.setStyleSheet("background-color: #ffffff;")
         tabs.addTab(packs_tab, "Map Packs")
+
+        # Bottom bar with an explicit Close on the far right. Under Hyprland the
+        # window has no title bar, so there is no decoration close button.
+        # Mappings are saved on every change, so closing never loses work.
+        # Escape does the same.
+        bottom_bar = QHBoxLayout()
+        bottom_bar.addStretch()
+        close_btn = QPushButton("Close")
+        close_btn.setMinimumWidth(100)
+        close_btn.clicked.connect(self.close)
+        bottom_bar.addWidget(close_btn)
+        layout.addLayout(bottom_bar)
+        QShortcut(QKeySequence(Qt.Key_Escape), self, activated=self.close)
         self.setup_packs_tab(packs_tab)
 
     def setup_packs_tab(self, parent):
