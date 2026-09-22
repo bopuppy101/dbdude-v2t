@@ -26,6 +26,7 @@ def load_pipeline(platform):
               _strip_punct_used=False, WHISPER_HALLUCINATIONS=set(),
               EXPLICIT_DOT=formatter.EXPLICIT_DOT,
               format_sentences=formatter.format_sentences,
+              strip_trailing_pipe=getattr(formatter, 'strip_trailing_pipe', lambda text: text),
               replace_spoken_email=lambda text: text)
     wanted = {'replace_misheard_names', 'strip_trailing_period_if_symbol_map',
               'apply_mappings', 'apply_wildcard_mappings', 'apply_rules',

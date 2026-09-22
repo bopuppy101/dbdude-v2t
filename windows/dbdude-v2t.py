@@ -147,6 +147,11 @@ R2T2_LANGUAGE_NAMES = {
     'de': 'German', 'it': 'Italian', 'pt': 'Portuguese', 'nl': 'Dutch',
     'ru': 'Russian', 'ja': 'Japanese', 'ko': 'Korean', 'ar': 'Arabic',
 }
+# R2T2 is trained for streaming and holds the last few words back until it has
+# heard a few more seconds of audio; a clip that ends right after the final
+# word loses that word (or gets a '|' marker). Appending silence gives the
+# decoder the trailing context it needs, the same as holding the key down.
+R2T2_TAIL_PAD_S = 5.0
 
 def load_r2t2_model():
     """Load Confucius4-R2T2 via qwen-asr. Returns the model, or None on failure."""
@@ -178,6 +183,8 @@ def load_r2t2_model():
 
 def r2t2_transcribe(model, audio_np, language_code):
     """Transcribe one mono float32 clip at SAMPLERATE with R2T2; return raw text."""
+    tail = np.zeros(int(R2T2_TAIL_PAD_S * SAMPLERATE), dtype=audio_np.dtype)
+    audio_np = np.concatenate([audio_np, tail])
     results = model.transcribe(audio=[(audio_np, SAMPLERATE)],
                                language=[R2T2_LANGUAGE_NAMES.get(language_code)])
     return ' '.join(r.text for r in results)

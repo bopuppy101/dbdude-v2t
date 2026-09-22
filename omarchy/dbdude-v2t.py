@@ -376,6 +376,11 @@ R2T2_LANGUAGE_NAMES = {
     'ru': 'Russian', 'ja': 'Japanese', 'ko': 'Korean', 'ar': 'Arabic',
 }
 R2T2_LANGUAGE = R2T2_LANGUAGE_NAMES.get(_settings.get('language'))
+# R2T2 is trained for streaming and holds the last few words back until it has
+# heard a few more seconds of audio; a clip that ends right after the final
+# word loses that word (or gets a '|' marker). Appending silence gives the
+# decoder the trailing context it needs, the same as holding the key down.
+R2T2_TAIL_PAD_S = 5.0
 USE_R2T2 = (MODEL_NAME == 'r2t2')
 
 def _load_r2t2_model():
@@ -443,6 +448,8 @@ else:
 def transcribe_audio(audio_np):
     """Return the raw transcript for a mono float32 clip at WHISPER_SAMPLERATE."""
     if USE_R2T2:
+        tail = np.zeros(int(R2T2_TAIL_PAD_S * WHISPER_SAMPLERATE), dtype=audio_np.dtype)
+        audio_np = np.concatenate([audio_np, tail])
         results = model.transcribe(audio=[(audio_np, WHISPER_SAMPLERATE)], language=[R2T2_LANGUAGE])
         return ' '.join(r.text for r in results)
     segments, info = model.transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=None, task='transcribe')
