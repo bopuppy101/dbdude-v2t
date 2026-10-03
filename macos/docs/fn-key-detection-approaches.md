@@ -86,7 +86,7 @@ It is likely that approaches #1-#3 would also work with the Globe key emoji disa
 
 ## External keyboard note
 
-When disconnecting from an external keyboard (e.g., unplugging a Magic Keyboard from a Studio Display), the NSEvent monitor may stop receiving events. Restart the application to recover. This is a rare edge case and not worth fixing at this time.
+Connecting or disconnecting an external keyboard (for example, through a Studio Display) can leave the NSEvent monitor unresponsive. The sleep/wake patch now replaces the Fn monitor on every active audio-engine recovery, including a device change, and after session wake. Failed monitor installation keeps the app in Recovering with an error. A keyboard-only failure that does not trigger audio recovery still needs separate verification.
 
 ---
 

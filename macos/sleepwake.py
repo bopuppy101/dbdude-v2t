@@ -154,33 +154,12 @@ def sleepwake_l2_should_rebuild(engine_running, heartbeat_stale):
 # ============================================================================
 
 
-# ============================================================================
-# SLEEPWAKE-L3: Resume re-arm via time-gap detection (catch-all)
-# ============================================================================
-# The process can't be notified mid-sleep (it's frozen), so we infer a resume
-# AFTER it happens: the watchdog timer ticks every ~2s, so a multi-second gap
-# between two ticks means the process was suspended (i.e. the machine slept).
-# On detecting that, the caller does a full re-arm — clear FN/recording state,
-# DISCARD any phantom audio (never transcribe it), remove + re-add the NSEvent
-# monitor, force an engine rebuild — and prints a RESUME DETECTED console line.
-
-SLEEPWAKE_L3_RESUME_GAP_S = 5.0  # tick gap beyond this => system was asleep
+# Legacy gap classifier retained for compatibility with existing helper users.
+# A timer gap does NOT prove sleep. The macOS app no longer uses this helper;
+# lifecycle.py and powerstate.py control suspension using actual OS state.
+SLEEPWAKE_L3_RESUME_GAP_S = 5.0
 
 
 def sleepwake_l3_detect_resume(elapsed_seconds, threshold=SLEEPWAKE_L3_RESUME_GAP_S):
-    """SLEEPWAKE-L3 (pure): True if the gap between watchdog ticks indicates a sleep.
-
-    Normal ticks are ~2s apart; recording/transcribing don't block the timer.
-    Only a suspended (slept) process produces a gap beyond the threshold, so a
-    long dictation is NOT mistaken for sleep — the timer was firing the whole time.
-
-    Args:
-        elapsed_seconds: wall-clock seconds since the previous tick.
-        threshold: gap above which we declare a resume.
-    Returns:
-        bool (strictly greater-than; non-positive elapsed returns False).
-    """
+    """Legacy threshold classifier; not reliable evidence of system sleep."""
     return elapsed_seconds > threshold
-# ============================================================================
-# END SLEEPWAKE-L3
-# ============================================================================
