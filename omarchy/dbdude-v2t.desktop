@@ -1,0 +1,10 @@
+[Desktop Entry]
+# Copyright (c) 2025-2026 Michael Foster / DBDude Inc. Licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later).
+# To install: update the paths below, then copy to ~/.local/share/applications/
+Name=dbdude-v2t
+Comment=Local voice-to-text transcription
+Exec=/CHANGE_THIS_PATH/omarchy/run-dbdude-v2t.bash
+Icon=/CHANGE_THIS_PATH/omarchy/icons/v2t.ico
+Type=Application
+Terminal=true
+Categories=Utility;Audio;

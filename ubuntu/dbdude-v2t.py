@@ -514,12 +514,23 @@ shutdown_event = threading.Event()    # Set when we want to exit the app
 audio_queue = queue.Queue()           # Thread-safe data transfer
 
 _cb_stats = {"calls": 0, "frames": 0, "queued": 0, "first_logged": False,
-             "status_count": 0, "status_last_print": 0.0}
+             "status_count": 0, "status_last_print": 0.0,
+             "last_call": 0.0, "window_peak": 0.0}
+
+# Watchdog thresholds: a healthy stream calls back ~47x/s, and even an empty
+# room gives a peak well above 1e-5. Anything else is the mic wedging.
+STALL_SECONDS = 10       # no callback at all for this long
+SILENCE_SECONDS = 180    # digital-silence peaks for this long
 
 def audio_callback(indata, frames, time_info, status):
     """Called by sounddevice in a background thread."""
     _cb_stats["calls"] += 1
     _cb_stats["frames"] += frames
+    _cb_stats["last_call"] = time.time()
+    if indata.size:
+        _pk = float(np.abs(indata).max())
+        if _pk > _cb_stats["window_peak"]:
+            _cb_stats["window_peak"] = _pk
 
     if not _cb_stats["first_logged"]:
         _cb_stats["first_logged"] = True
@@ -626,6 +637,60 @@ def _log_audio_config(device_name, audio_device):
     print("=" * 62)
 
 
+def _watch_audio_stream():
+    """Keep the stream open and log, with timestamps, when the mic goes dead.
+
+    Two failure modes are distinguished so the console says which one hit:
+    STALL   - the callback stopped firing (USB device stopped delivering).
+    SILENT  - callbacks continue but carry digital silence (device wedged
+              or muted). Transitions are logged once each way.
+    """
+    stalled = False
+    silent_since = None
+    silent_logged = False
+    window_start = time.time()
+    while not shutdown_event.is_set():
+        time.sleep(0.5)
+        now = time.time()
+        last = _cb_stats["last_call"]
+
+        # --- stall detection ---
+        if last and now - last > STALL_SECONDS:
+            if not stalled:
+                stalled = True
+                print(f"!! AUDIO STALL at {time.strftime('%H:%M:%S')}: no audio callback "
+                      f"for {now - last:.0f}s (last at "
+                      f"{time.strftime('%H:%M:%S', time.localtime(last))}). "
+                      f"The mic has stopped delivering data.", file=sys.stderr)
+        elif stalled:
+            stalled = False
+            print(f">> AUDIO RESUMED at {time.strftime('%H:%M:%S')}: callbacks are "
+                  f"flowing again.", file=sys.stderr)
+
+        # --- silence detection, evaluated once a minute ---
+        if now - window_start >= 60:
+            peak = _cb_stats["window_peak"]
+            _cb_stats["window_peak"] = 0.0
+            window_start = now
+            if stalled:
+                continue
+            if peak < 1e-5:
+                if silent_since is None:
+                    silent_since = now - 60
+                if not silent_logged and now - silent_since >= SILENCE_SECONDS:
+                    silent_logged = True
+                    print(f"!! AUDIO SILENT at {time.strftime('%H:%M:%S')}: digital silence "
+                          f"since {time.strftime('%H:%M:%S', time.localtime(silent_since))} "
+                          f"(peak={peak:.1e}). Mic is delivering data but no signal.",
+                          file=sys.stderr)
+            else:
+                if silent_logged:
+                    print(f">> AUDIO SIGNAL BACK at {time.strftime('%H:%M:%S')} "
+                          f"(peak={peak:.4f}).", file=sys.stderr)
+                silent_since = None
+                silent_logged = False
+
+
 def audio_stream_worker():
     """Runs in a separate thread. Opens the stream and keeps it alive."""
     # Get device from settings, default to system default if not set
@@ -674,8 +739,7 @@ def audio_stream_worker():
                   f"samplerate={_stream.samplerate} channels={_stream.channels} "
                   f"dtype={_stream.dtype} blocksize={_stream.blocksize} "
                   f"latency={_stream.latency} active={_stream.active}")
-            while not shutdown_event.is_set():
-                time.sleep(0.1)
+            _watch_audio_stream()
     except Exception as e:
         print(f"CRITICAL AUDIO FAILURE in worker thread: {e}", file=sys.stderr)
         import traceback

@@ -112,6 +112,53 @@ typer = KeyboardController()
 
 TARGET_SAMPLE_RATE = 16000  # mlx_whisper expects 16kHz
 
+# --- R2T2 (Confucius4-R2T2) support ---
+# Model 'r2t2' selects NetEase Youdao's Confucius4-R2T2, a 2B Qwen3-ASR
+# fine-tune, run on Apple Silicon through mlx-audio using a community 4-bit
+# MLX conversion (~1.5 GB, downloaded from Hugging Face on first use under
+# NetEase's Model Use License). Nothing here is imported unless 'r2t2' is the
+# selected model, so the mlx-whisper path is unchanged. Offline (whole-clip)
+# mode only, which is all push-to-talk needs.
+R2T2_MODEL_NAME = "r2t2"
+R2T2_MLX_REPO = "selcukkubur/Confucius4-R2T2-mlx-4bit"
+# mlx-audio wants language *names*, not ISO codes. Passing a language makes the
+# model emit transcript text only. Unmapped codes fall back to auto-detect.
+R2T2_LANGUAGE_NAMES = {
+    'en': 'English', 'zh': 'Chinese', 'es': 'Spanish', 'fr': 'French',
+    'de': 'German', 'it': 'Italian', 'pt': 'Portuguese', 'nl': 'Dutch',
+    'ru': 'Russian', 'ja': 'Japanese', 'ko': 'Korean', 'ar': 'Arabic',
+}
+# R2T2 is trained for streaming and holds the last few words back until it has
+# heard a few more seconds of audio; a clip that ends right after the final
+# word loses that word (or gets a '|' marker). Appending silence gives the
+# decoder the trailing context it needs, the same as holding the key down.
+R2T2_TAIL_PAD_S = 5.0
+_R2T2_MODEL = None
+
+
+def _get_r2t2_model():
+    """Load the R2T2 MLX model once and cache it for the process lifetime."""
+    global _R2T2_MODEL
+    if _R2T2_MODEL is None:
+        try:
+            from mlx_audio.stt.utils import load_model
+        except ImportError as e:
+            raise RuntimeError(
+                f"The r2t2 model needs mlx-audio ({e}). Install it with: bash setup.bash --with-r2t2")
+        print(f"INFO: Loading R2T2 model ({R2T2_MLX_REPO})...", flush=True)
+        _R2T2_MODEL = load_model(R2T2_MLX_REPO)
+        print("INFO: R2T2 model loaded.", flush=True)
+    return _R2T2_MODEL
+
+
+def r2t2_transcribe(audio, language_code):
+    """Transcribe one mono float32 clip at TARGET_SAMPLE_RATE with R2T2; return raw text."""
+    model = _get_r2t2_model()
+    tail = np.zeros(int(R2T2_TAIL_PAD_S * TARGET_SAMPLE_RATE), dtype=np.float32)
+    audio = np.concatenate([np.asarray(audio, dtype=np.float32), tail])
+    result = model.generate(audio, language=R2T2_LANGUAGE_NAMES.get(language_code))
+    return result.text
+
 
 def _is_bundled_app():
     return '.app/Contents/MacOS' in str(Path(sys.executable))
@@ -416,20 +463,23 @@ def transcription_worker():
             if not lifecycle.can_deliver(epoch):
                 continue
             transcribe_start = time.monotonic()
-            model_name = get_model_name()
             model = SETTINGS.get('model', 'small')
             language = SETTINGS.get('language', 'en')
-            if language == 'en':
-                bundled_name = f"whisper-{model}.en-mlx"
+            if model == R2T2_MODEL_NAME:
+                raw = r2t2_transcribe(audio, language).strip()
             else:
-                bundled_name = f"whisper-{model}-mlx"
-            model_path = get_resources_dir() / "models" / bundled_name
-            if model_path.exists():
-                result = mlx_whisper.transcribe(audio, path_or_hf_repo=str(model_path), condition_on_previous_text=False)
-            else:
-                result = mlx_whisper.transcribe(audio, path_or_hf_repo=model_name, condition_on_previous_text=False)
+                model_name = get_model_name()
+                if language == 'en':
+                    bundled_name = f"whisper-{model}.en-mlx"
+                else:
+                    bundled_name = f"whisper-{model}-mlx"
+                model_path = get_resources_dir() / "models" / bundled_name
+                if model_path.exists():
+                    result = mlx_whisper.transcribe(audio, path_or_hf_repo=str(model_path), condition_on_previous_text=False)
+                else:
+                    result = mlx_whisper.transcribe(audio, path_or_hf_repo=model_name, condition_on_previous_text=False)
+                raw = result['text'].strip()
             transcribe_time = time.monotonic() - transcribe_start
-            raw = result['text'].strip()
             print(f"Transcribed {recording_duration:.2f}s audio in {transcribe_time:.2f}s", flush=True)
             if not V2T_TEST_HOOKS and SETTINGS.get("log"):
                 print(f"Transcribed: {raw}", flush=True)

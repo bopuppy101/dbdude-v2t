@@ -1,0 +1,16 @@
+# Omarchy (Arch Linux) faster-whisper requirements
+# Install with: pip install -r requirements.txt
+
+faster-whisper
+numpy
+scipy
+sounddevice
+ctranslate2
+regex
+PySide6
+
+# GPU support (optional - install if you have NVIDIA GPU)
+# pip install nvidia-cudnn-cu12 nvidia-cublas-cu12
+
+# Also need system packages:
+# sudo pacman -S --needed portaudio libpulse qt6-wayland ydotool
