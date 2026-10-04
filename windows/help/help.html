@@ -99,7 +99,7 @@
 
 <p>dbdude-v2t is a GPU-accelerated voice-to-text tool that lets you <em>speak</em> text directly into any application.</p>
 
-<p>dbdude-v2t uses an underlying AI model named Faster Whisper. The base model is included with the installer. dbdude-v2t is optimized for NVIDIA GPUs but will work on CPU alone (with slower performance).</p>
+<p>dbdude-v2t uses an underlying AI model named Faster Whisper. For a source installation, the base model loads/downloads on first launch unless already available. Packaged distributions may include a model. dbdude-v2t is optimized for NVIDIA GPUs but will work on CPU alone (with slower performance).</p>
 
 <p>It supports two modes of operation:</p>
 <ul>
@@ -111,19 +111,24 @@
 
 <h2>1. Installation</h2>
 
-<ol>
-    <li>Run <code>v2t-setup-2026.exe</code></li>
-    <li>Accept the license agreement</li>
-    <li>Choose installation folder (default: <code>C:\Program Files\dbdude-v2t\</code>)</li>
-    <li>Optionally create a desktop shortcut</li>
-    <li>Click Install</li>
-</ol>
+<p>Installing from this repository? Start with the
+<a href="../../docs/installation-windows-beginners.md">beginner installation guide</a>
+or the <a href="../../docs/installation-windows-technical.md">technical installation guide</a>.
+They cover Python, automatic environment setup, permissions, first launch, and updates.</p>
+<p>From the repository's <code>windows</code> folder, run <code>.\setup.ps1</code>
+in PowerShell. Setup creates a desktop shortcut; launch it or <code>dbdude-v2t.bat</code>.
+The source setup does not create a Start Menu entry or download model weights.</p>
+<p>If you obtained a separate packaged installer, follow the instructions supplied
+with that release. A packaged installer is not produced by <code>setup.ps1</code>.</p>
 
 <hr>
 
 <h2>2. Starting dbdude-v2t</h2>
 
-<h3>From the Start Menu</h3>
+<h3>From a source installation</h3>
+<p>Double-click the desktop shortcut created by setup, or <code>dbdude-v2t.bat</code> in the Windows folder.</p>
+
+<h3>From the Start Menu (packaged installation, if provided)</h3>
 <ol>
     <li>Open the Windows Start Menu</li>
     <li>Search for <strong>dbdude-v2t</strong></li>
@@ -131,7 +136,7 @@
 </ol>
 
 <h3>What Happens at Startup</h3>
-<p>When dbdude-v2t launches, it opens a configurator window where you can:</p>
+<p>A source launch normally loads saved settings (or defaults) and the model, then runs in the tray. Open the Configurator from the tray to adjust settings, including:</p>
 <ul>
     <li>Select the Whisper model size</li>
     <li>Choose your microphone</li>
