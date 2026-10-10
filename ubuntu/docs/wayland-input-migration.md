@@ -1,5 +1,12 @@
 # Wayland Input Migration: xdotool to ydotool
 
+> Historical migration discussion: this `ubuntu/` folder currently still uses
+> xdotool and the X11 launcher. The ydotool examples below are not its current
+> installation procedure. Use `ubuntu-26.04/` for the documented Ubuntu Wayland path.
+
+For current installation, use the [beginner guide](../../docs/installation-ubuntu-x11-beginners.md)
+or [technical guide](../../docs/installation-ubuntu-x11-technical.md).
+
 ## Problem
 
 Starting with Ubuntu 25.04, the default desktop session runs on Wayland with
@@ -71,7 +78,7 @@ To revert to xdotool (e.g., on a system without ydotool), change the
 subprocess call in `dbdude-v2t.py` `type_with_xdotool()`:
 
 ```python
-# ydotool (current - works on X11 and Wayland)
+# ydotool (proposed migration; not current in this folder)
 ['ydotool', 'type', '--', text]
 
 # xdotool (legacy - X11 only)

@@ -1,71 +1,23 @@
-# dbdude-v2t — macOS Python venv and model setup
+# macOS Python environment and model setup
 
-> **Updated 2026-04-17.** macOS audio capture was converted from `sounddevice` to `AVAudioEngine` via PyObjC in April 2026. The `sounddevice` dependency is still present because `configurator_gui.py` uses `sd.query_devices()` to list available input devices, but the main capture path in `dbdude-v2t.py` no longer uses it. See `docs/audio-capture-library-per-platform.md` and `macos/docs/av-audio-engine-implementation.md` for detail.
+Installation documentation is maintained in two guides:
 
-## Quick setup (via setup.bash)
+- [Beginner guide](../../docs/installation-macos-beginners.md) for prerequisites,
+  setup, permissions, first dictation, everyday launch, and troubleshooting.
+- [Technical guide](../../docs/installation-macos-technical.md) for commands and
+  manual environment creation; see also [Python behavior](../../docs/installation-macos-technical.md#python-and-environment-behavior)
+  and [model loading](../../docs/installation-macos-technical.md#models-and-download-timing).
 
-From the repo root:
+The current setup script selects an installed Python 3.10+; it prefers versioned
+commands from 3.14 down to 3.10, then tries `python3`. It is not pinned to Python
+3.12. Existing `macos/venv` directories are reused. Requirements currently specify
+`pyobjc-framework-Quartz>=12.0`; historical notes about older PyObjC versions do
+not describe the current requirements.
 
-```bash
-cd ~/git/dbdude-v2t/macos
-./setup.bash
-```
+Setup installs packages, not model weights. The default Whisper model is `small`
+(English), loaded on first transcription from a local model directory if present,
+otherwise through Hugging Face. Optional R2T2 requires the extra setup flag.
 
-`setup.bash` verifies Python 3.10+ is installed, creates `macos/venv/`, installs everything from `macos/requirements.txt`, sets the custom icon on the `.command` launcher, and warns if the Globe/FN key is not set to "Do Nothing" in System Settings.
-
-## Manual setup (what setup.bash does under the hood)
-
-```bash
-# Repo is at ~/git/dbdude-v2t
-cd ~/git/dbdude-v2t/macos
-
-# Create virtual environment
-python3 -m venv venv
-
-# Activate it
-source venv/bin/activate
-
-# Install dependencies from requirements.txt
-pip install -r requirements.txt
-```
-
-Current dependencies (from `macos/requirements.txt`):
-
-- `mlx-whisper` — Speech-to-text via Apple MLX (Metal GPU)
-- `numpy` — Audio array handling
-- `sounddevice` — Retained for `configurator_gui.py` device listing only; capture path no longer uses it
-- `pynput` — Keyboard output (typing the transcribed text)
-- `rumps` — Menu bar app framework
-- `pyobjc-framework-Quartz` — Used for Cocoa (NSEvent) and AVFoundation (AVAudioEngine) bindings
-- `PySide6` — UI for configurator and mapping/rules editors
-
-`scipy` is not in requirements.txt but is pulled in transitively via `mlx-whisper`. It's used in `dbdude-v2t.py` for 48 kHz → 16 kHz resampling in `stop_recording` (`scipy.signal.resample_poly`).
-
-## Python version
-
-macOS builds have been pinned to **Python 3.12** because pyobjc 12.x is yanked from PyPI and pyobjc 11.x has compatibility issues with Python 3.13. See `project_macos_setup.md` in Claude memory for history.
-
-## Model usage
-
-```python
-import mlx_whisper
-
-result = mlx_whisper.transcribe(
-    "audio.wav",
-    path_or_hf_repo="mlx-community/whisper-small.en-mlx",
-    condition_on_previous_text=False,
-)
-print(result["text"])
-```
-
-The model is loaded from a bundled directory if present (`Resources/models/whisper-<model>.en-mlx/`), otherwise downloaded from Hugging Face on first use.
-
-## Verify FN key setting
-
-Both `setup.bash` and `dbdude-v2t.py` check on startup:
-
-```bash
-defaults read com.apple.HIToolbox AppleFnUsageType
-```
-
-Expected value: `3` ("Do Nothing"). If not, the FN key detection may be unreliable — see `docs/macos-fn-key-setup.md` for the user-facing fix.
+The main audio capture path uses AVAudioEngine; `sounddevice` remains for
+Configurator device listing. See [AVAudioEngine implementation](av-audio-engine-implementation.md)
+and [audio capture by platform](../../docs/audio-capture-library-per-platform.md).

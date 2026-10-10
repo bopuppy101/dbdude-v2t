@@ -6,6 +6,12 @@
 > re-homes Arch's shipped ydotool.service user unit to the graphical session.
 > The original `ubuntu/` folder (24.04, X11) is unchanged.
 
+For current installation, use the [beginner guide](../../docs/installation-omarchy-beginners.md)
+or [technical guide](../../docs/installation-omarchy-technical.md).
+
+The Ubuntu examples below are migration history; Omarchy uses pacman and the
+setup script in this folder.
+
 ## Problem
 
 Starting with Ubuntu 25.04, the default desktop session runs on Wayland with
@@ -46,11 +52,14 @@ Replace `xdotool` with `ydotool`.
 - Available in Ubuntu repos for both 24.04 and 25.04 (`universe` section).
 - Drop-in replacement with nearly identical syntax.
 
-### Install
+### Historical Ubuntu package example
 
 ```bash
 sudo apt install ydotool
 ```
+
+For Omarchy, use `bash setup.bash` from `omarchy/` instead; it installs ydotool
+with pacman and configures the required device access and user service.
 
 ### Syntax difference
 

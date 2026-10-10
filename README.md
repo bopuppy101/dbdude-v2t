@@ -9,7 +9,7 @@ Local, privacy-first voice-to-text for your desktop. Hold a hotkey to record, re
 - **System-wide input** - types into any focused window (browser, editor, terminal, etc.)
 - **Fully local** - runs Whisper models on your machine, no cloud, no API keys, your audio never leaves your computer
 - **Multiple models** - choose from tiny to large-v3 depending on your hardware
-- **GPU accelerated** - automatic CUDA detection on Windows/Ubuntu/Omarchy, Apple Silicon (MLX) on macOS
+- **GPU accelerated** - CUDA detection on Windows, X11 Ubuntu, and Omarchy; Apple Silicon (MLX) on macOS. The Ubuntu 26.04 launcher currently uses CPU
 - **Custom mappings** - correct misheard words, expand abbreviations, add programming symbols
 - **Mapping packs** - bundled Punctuation and Programmer packs for common replacements
 - **System tray app** - runs in the background with status icons (idle/recording/transcribing)
@@ -40,7 +40,8 @@ with **Reload Mapping Files**.
 |----------|--------|-------------|-----------|
 | **Windows** | Alt+Shift (hold) | AutoHotkey | faster-whisper (CPU/CUDA) |
 | **macOS** | Fn (hold) | Quartz events | mlx-whisper (Apple Silicon) |
-| **Ubuntu** | Alt+Shift (hold) | xdotool | faster-whisper (CPU/CUDA) |
+| **Ubuntu (X11)** | Alt+Shift (hold) | xdotool | faster-whisper (CPU/CUDA) |
+| **Ubuntu 26.04 (Wayland)** | Alt+Shift (hold) | ydotool | faster-whisper (launcher uses CPU) |
 | **Omarchy** (Arch + Hyprland) | Alt+Shift (hold) | ydotool | faster-whisper (CPU/CUDA) |
 
 ## Keyboard Shortcuts
@@ -55,142 +56,32 @@ macOS uses Fn instead of Alt+Shift.
 
 ## Installation
 
-**Requires Python 3.10 or later.** Verify your version:
+Choose your platform and preferred level of detail. Each guide is self-contained.
 
-```bash
-python --version    # Windows
-python3 --version   # macOS / Ubuntu / Omarchy
-```
+**macOS (Apple Silicon)**
 
-Each platform has a setup script that creates a Python virtual environment and installs all dependencies. The install downloads a significant number of packages including a Hugging Face Whisper model for speech recognition, so expect it to take several minutes depending on your internet connection.
+- [docs/installation-macos-beginners.md](docs/installation-macos-beginners.md) — step-by-step installation, first dictation, updates, and troubleshooting.
+- [docs/installation-macos-technical.md](docs/installation-macos-technical.md) — commands, dependencies, models, permissions, updates, and diagnostics.
 
-### Windows
+**Windows**
 
-Open PowerShell in the project directory and run:
+- [docs/installation-windows-beginners.md](docs/installation-windows-beginners.md) — step-by-step installation, first dictation, updates, and troubleshooting.
+- [docs/installation-windows-technical.md](docs/installation-windows-technical.md) — commands, dependencies, models, permissions, updates, and diagnostics.
 
-```powershell
-cd windows
-.\setup.ps1
-```
+**Ubuntu with X11/Xorg**
 
-If you get an execution policy error, use:
+- [docs/installation-ubuntu-x11-beginners.md](docs/installation-ubuntu-x11-beginners.md) — step-by-step installation, first dictation, updates, and troubleshooting.
+- [docs/installation-ubuntu-x11-technical.md](docs/installation-ubuntu-x11-technical.md) — commands, dependencies, models, permissions, updates, and diagnostics.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1
-```
+**Ubuntu 26.04 with Wayland**
 
-To launch, double-click `windows\dbdude-v2t.bat` or pin it to your taskbar. You can also run manually:
+- [docs/installation-ubuntu-26-04-wayland-beginners.md](docs/installation-ubuntu-26-04-wayland-beginners.md) — step-by-step installation, first dictation, updates, and troubleshooting.
+- [docs/installation-ubuntu-26-04-wayland-technical.md](docs/installation-ubuntu-26-04-wayland-technical.md) — commands, dependencies, models, permissions, updates, and diagnostics.
 
-```powershell
-cd windows
-.\venv\Scripts\python.exe dbdude-v2t.py
-```
+**Omarchy (Arch Linux + Hyprland)**
 
-#### Optional: R2T2 model (experimental)
-
-Windows can also run [Confucius4-R2T2](https://huggingface.co/netease-youdao/Confucius4-R2T2)
-(see the Omarchy section below for what it is). Install the extra stack with `.\setup.ps1 -WithR2T2`,
-then pick `r2t2` in the Configurator. An NVIDIA GPU is strongly recommended; the weights (about 4 GB)
-download from Hugging Face on first launch. Whisper models are unaffected unless `r2t2` is selected.
-
-### macOS
-
-```bash
-cd macos
-bash setup.bash
-```
-
-To launch, double-click `dbdude-v2t.command` or drag it to your Dock for quick access. You can also run manually:
-
-```bash
-cd macos
-source venv/bin/activate
-python3 dbdude-v2t.py
-```
-
-macOS will prompt for Accessibility and Microphone permissions on first use. Grant both for dbdude-v2t to function.
-
-#### Optional: R2T2 model (experimental)
-
-macOS can also run [Confucius4-R2T2](https://huggingface.co/netease-youdao/Confucius4-R2T2)
-(see the Omarchy section below for what it is) natively on Apple Silicon through `mlx-audio`, using a
-community 4-bit MLX conversion. Install the extra stack with `bash setup.bash --with-r2t2`, then pick
-`r2t2` in the Configurator. The weights (about 1.5 GB) download from Hugging Face on the first
-transcription. Whisper models are unaffected unless `r2t2` is selected.
-
-### Ubuntu
-
-```bash
-cd ubuntu
-bash setup.bash
-```
-
-To launch:
-
-```bash
-cd ubuntu
-./run-dbdude-v2t.bash
-```
-
-Or add an alias to `~/.bashrc` for quick access:
-
-```bash
-alias rv='/path/to/ubuntu/run-dbdude-v2t.bash'
-```
-
-A `dbdude-v2t.desktop` file is also included. To use it, update the paths inside the file and copy it to `~/.local/share/applications/`.
-
-Note: Ubuntu requires `sudo` for keyboard input detection.
-
-### Omarchy (Arch Linux + Hyprland)
-
-```bash
-cd omarchy
-bash setup.bash
-```
-
-`setup.bash` installs `ydotool` via pacman, loads the `uinput` kernel module (persisted in
-`/etc/modules-load.d/`), installs udev `uaccess` rules so your desktop login gets access to
-`/dev/uinput` and `/dev/input/event*` without `sudo` or group changes, and enables the
-`ydotool` user service. Sudo is needed once during setup only.
-
-To launch:
-
-```bash
-cd omarchy
-./run-dbdude-v2t.bash
-```
-
-Or add an alias to `~/.bashrc`:
-
-```bash
-alias rv='/path/to/omarchy/run-dbdude-v2t.bash'
-```
-
-The tray icon appears in the Omarchy bar's tray drawer. To keep it always visible, add it to the
-tray's pinned list in `~/.config/omarchy/shell.json`:
-
-```json
-{ "id": "omarchy.tray", "pinned": ["dbdude-v2t.py"] }
-```
-
-#### Optional: R2T2 model (experimental)
-
-The Omarchy dialect can also run [Confucius4-R2T2](https://huggingface.co/netease-youdao/Confucius4-R2T2),
-NetEase Youdao's 2B-parameter Qwen3-ASR fine-tune, as an alternative to Whisper. It runs in
-offline (whole-clip) mode through the `qwen-asr` transformers backend, so each push-to-talk
-clip is transcribed as one unit, the same as with Whisper. Install the extra stack (PyTorch plus
-`qwen-asr`, several GB), then pick `r2t2` in the Configurator or launch with `--model r2t2`:
-
-```bash
-cd omarchy
-bash setup.bash --with-r2t2
-./run-dbdude-v2t.bash --model r2t2
-```
-
-The weights (about 4 GB) download from Hugging Face on first use and are covered by NetEase's
-Model Use License, not this project's GPL. An NVIDIA GPU is strongly recommended; CPU mode works
-but is slow.
+- [docs/installation-omarchy-beginners.md](docs/installation-omarchy-beginners.md) — step-by-step installation, first dictation, updates, and troubleshooting.
+- [docs/installation-omarchy-technical.md](docs/installation-omarchy-technical.md) — commands, dependencies, models, permissions, updates, and diagnostics.
 
 ## License
 

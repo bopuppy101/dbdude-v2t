@@ -1,11 +1,14 @@
 # Wayland Input Migration: xdotool to ydotool
 
-> **Status: APPLIED in this `ubuntu-26.04/` folder (2026-08-22).** The code
-> uses ydotool; setup.bash installs it and enables the ydotoold user service;
-> the launcher passes `YDOTOOL_SOCKET` (and `XAUTHORITY` for Qt over XWayland)
-> through sudo. Ubuntu 26.04 has no Xorg session at all — Wayland only — so
-> xdotool is not an option there. The original `ubuntu/` folder (24.04, X11)
-> is unchanged.
+> **Current implementation:** this folder uses ydotool. Setup installs it,
+> configures uaccess device rules, and enables the user service. The launcher
+> runs as the desktop user without sudo, sets native Wayland Qt, and forces CPU
+> mode. The original `ubuntu/` folder retains its X11/xdotool path.
+
+For current installation, use the [beginner guide](../../docs/installation-ubuntu-26-04-wayland-beginners.md)
+or [technical guide](../../docs/installation-ubuntu-26-04-wayland-technical.md).
+
+The following migration history is background, not a complete installation recipe.
 
 ## Problem
 
