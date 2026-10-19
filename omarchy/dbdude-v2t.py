@@ -39,7 +39,7 @@ VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'large-v2', 'large-v
 parser = argparse.ArgumentParser(description='Voice-to-text transcription with hotkeys')
 parser.add_argument('--log', action='store_true', help='Enable logging transcriptions to ~/logs')
 parser.add_argument('--no-log', action='store_true', help='Disable logging (overrides settings)')
-parser.add_argument('--model', choices=VALID_MODELS, default=None, help='Whisper model size or r2t2 (default: from settings or base)')
+parser.add_argument('--model', choices=VALID_MODELS, default=None, help='Whisper model size or r2t2 (default: from settings or large-v3)')
 parser.add_argument('--debug', action='store_true', help='Enable debug output for mapping steps')
 args = parser.parse_args()
 
@@ -54,7 +54,7 @@ def _load_settings():
     else:
         settings_file = Path.home() / ".dbdude-v2t" / "settings.json"
 
-    defaults = {"model": "base", "language": "en", "log": False, "device": None}
+    defaults = {"model": "large-v3", "language": "en", "log": False, "device": None}
     if settings_file.exists():
         try:
             with open(settings_file, 'r', encoding='utf-8') as f:
@@ -74,7 +74,7 @@ elif args.no_log:
 else:
     ENABLE_LOGGING = _settings.get('log', False)
 
-MODEL_NAME = args.model if args.model else _settings.get('model', 'base')
+MODEL_NAME = args.model if args.model else _settings.get('model', 'large-v3')
 
 # --- Configuration ---
 
