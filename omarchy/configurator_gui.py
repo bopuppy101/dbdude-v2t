@@ -35,7 +35,7 @@ def load_settings():
     """Load settings from file."""
     settings_file = get_user_data_dir() / "settings.json"
     defaults = {
-        "model": "large-v3",
+        "model": "base",
         "language": "en",
         "log": False,
         "device": None
@@ -435,7 +435,7 @@ class ConfiguratorDialog(QDialog):
         settings_layout.addWidget(QLabel("Model:"), 0, 0)
         self.model_combo = QComboBox()
         self.model_combo.addItems(VALID_MODELS)
-        self.model_combo.setCurrentText(self.settings.get("model", "large-v3"))
+        self.model_combo.setCurrentText(self.settings.get("model", "base"))
         self.model_combo.currentTextChanged.connect(self._on_setting_changed)
         settings_layout.addWidget(self.model_combo, 0, 1)
 
