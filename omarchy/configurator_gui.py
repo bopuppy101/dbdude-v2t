@@ -584,7 +584,9 @@ class ConfiguratorDialog(QDialog):
         else:
             new_device = old_device
 
+        # Keep keys this window doesn't show (such as transcribe_url)
         self.settings = {
+            **self.settings,
             'model': new_model,
             'language': self.get_language_code(),
             'log': self.log_checkbox.isChecked(),

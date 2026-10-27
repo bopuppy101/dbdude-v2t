@@ -133,6 +133,24 @@ before the tray appears, launch the Configurator directly from `omarchy/`:
 
 Choose an appropriate model/language, then relaunch through the supplied launcher.
 
+## Optional shared Whisper server
+
+To share one Whisper on the GPU with other programs (such as dbdude-talk's
+`/talk`), point the Omarchy dialect at a server that answers
+`POST /v1/audio/transcriptions`, such as `dbdude-tts serve` from dbdude-talk.
+Add `transcribe_url` to `~/.dbdude-v2t/settings.json`:
+
+```json
+{ "model": "large-v3-turbo", "language": "en", "transcribe_url": "http://127.0.0.1:8880" }
+```
+
+Each clip then goes to the server, and no local Whisper loads at startup (`model`
+is not used; the server's model is printed at startup). If the server is
+unreachable or fails, the clip is transcribed by a local `small` model on the CPU,
+loaded the first time it is needed, and the next clip tries the server again. The
+console shows which one was used and how long it took. Remove the key, or set it
+to `""`, to load `model` locally as before. `r2t2` ignores it.
+
 ## Optional R2T2 model
 
 R2T2 is an experimental alternative to Whisper. First complete the normal install

@@ -5,7 +5,11 @@
 # v6 adds: dynamic mappings loaded from JSON files
 
 import os
+import io
 import json
+import wave
+import urllib.error
+import urllib.request
 from pathlib import Path
 # Allow duplicate OpenMP runtimes (NumPy MKL + ONNX) to coexist
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -54,7 +58,7 @@ def _load_settings():
     else:
         settings_file = Path.home() / ".dbdude-v2t" / "settings.json"
 
-    defaults = {"model": "base", "language": "en", "log": False, "device": None}
+    defaults = {"model": "base", "language": "en", "log": False, "device": None, "transcribe_url": None}
     if settings_file.exists():
         try:
             with open(settings_file, 'r', encoding='utf-8') as f:
@@ -75,6 +79,15 @@ else:
     ENABLE_LOGGING = _settings.get('log', False)
 
 MODEL_NAME = args.model if args.model else _settings.get('model', 'base')
+
+# Shared Whisper: with "transcribe_url" set (e.g. "http://127.0.0.1:8880", where
+# dbdude-tts serve answers POST /v1/audio/transcriptions), each clip goes to that
+# server and no local Whisper loads at startup. While the server is unreachable
+# or failing, a local FALLBACK_MODEL_NAME on the CPU takes the clip (loaded the
+# first time it is needed) and the next clip tries the server again.
+TRANSCRIBE_URL = (_settings.get('transcribe_url') or '').rstrip('/')
+FALLBACK_MODEL_NAME = 'small'
+TRANSCRIBE_TIMEOUT_S = 30
 
 # --- Configuration ---
 
@@ -382,6 +395,8 @@ R2T2_LANGUAGE = R2T2_LANGUAGE_NAMES.get(_settings.get('language'))
 # decoder the trailing context it needs, the same as holding the key down.
 R2T2_TAIL_PAD_S = 5.0
 USE_R2T2 = (MODEL_NAME == 'r2t2')
+USE_SERVER = bool(TRANSCRIBE_URL) and not USE_R2T2
+SERVER_STT = None  # the server's {"model", "device", "compute_type"}, from its /health
 
 def _load_r2t2_model():
     """Load Confucius4-R2T2 via the qwen-asr transformers backend.
@@ -411,6 +426,35 @@ def _load_r2t2_model():
         max_new_tokens=512,
     )
 
+def _server_error(e):
+    """A short reason for a failed request to the transcription server."""
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            detail = json.loads(e.read()).get('detail')
+        except Exception:
+            detail = None
+        return f"HTTP {e.code}: {detail}" if detail else f"HTTP {e.code}"
+    if isinstance(e, urllib.error.URLError):
+        return str(e.reason)
+    return f"{type(e).__name__}: {e}"
+
+def _check_transcription_server():
+    """Print which model the shared server runs, or that clips will fall back."""
+    global SERVER_STT
+    try:
+        with urllib.request.urlopen(TRANSCRIBE_URL + '/health', timeout=3) as res:
+            SERVER_STT = json.loads(res.read()).get('stt')
+    except Exception as e:
+        print(f"WARNING: Transcription server {TRANSCRIBE_URL} unreachable ({_server_error(e)}); "
+              f"clips will fall back to local {FALLBACK_MODEL_NAME} on CPU until it answers", file=sys.stderr)
+        return
+    if not SERVER_STT:
+        print(f"WARNING: Transcription server {TRANSCRIBE_URL} has no Whisper loaded (speech-to-text off); "
+              f"clips will fall back to local {FALLBACK_MODEL_NAME} on CPU", file=sys.stderr)
+        return
+    print(f"INFO: Using shared transcription server {TRANSCRIBE_URL} ({SERVER_STT.get('model')}, "
+          f"{SERVER_STT.get('device')}, {SERVER_STT.get('compute_type')}); local model not loaded", file=sys.stderr)
+
 # CTranslate2 uses only 4 CPU threads by default; use one per physical core
 CPU_THREADS = max(4, (os.cpu_count() or 8) // 2)
 
@@ -421,6 +465,12 @@ if USE_R2T2:
     except Exception as e:
         print(f"ERROR: Could not load R2T2 Model: {e}", file=sys.stderr)
         sys.exit(1)
+elif USE_SERVER:
+    model = None
+    # The server is its own process: CUDA_VISIBLE_DEVICES here only affects the fallback
+    if os.environ.get('CUDA_VISIBLE_DEVICES') in ('', '-1'):
+        print("INFO: GPU acceleration disabled by CUDA_VISIBLE_DEVICES; local fallback will use CPU", file=sys.stderr)
+    _check_transcription_server()
 else:
     # Detect GPU availability
     if ctranslate2.get_cuda_device_count() > 0:
@@ -448,8 +498,64 @@ else:
         print(f"ERROR: Could not load Whisper Model: {e}", file=sys.stderr)
         sys.exit(1)
 
+_fallback_model = None
+_fallback_lock = threading.Lock()
+
+def _load_fallback_model():
+    """The local CPU model used while the transcription server is unavailable."""
+    global _fallback_model
+    with _fallback_lock:
+        if _fallback_model is None:
+            print(f"INFO: Loading local fallback Whisper Model ({FALLBACK_MODEL_NAME}, cpu int8)...", file=sys.stderr)
+            _fallback_model = WhisperModel(FALLBACK_MODEL_NAME, device="cpu", compute_type="int8", cpu_threads=CPU_THREADS)
+        return _fallback_model
+
+def _post_transcription(audio_np):
+    """Send a clip to the server's /v1/audio/transcriptions (OpenAI-style multipart)."""
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(WHISPER_SAMPLERATE)
+        w.writeframes((np.clip(audio_np, -1.0, 1.0) * 32767).astype('<i2').tobytes())
+    fields = {'model': 'whisper-1', 'response_format': 'json', 'beam_size': str(WHISPER_BEAM_SIZE)}
+    if _settings.get('language'):
+        fields['language'] = _settings['language']
+    boundary = f"v2t{os.urandom(12).hex()}"
+    parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+             for k, v in fields.items()]
+    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="clip.wav"\r\n'
+                 'Content-Type: audio/wav\r\n\r\n'.encode() + buf.getvalue() + b'\r\n')
+    parts.append(f'--{boundary}--\r\n'.encode())
+    req = urllib.request.Request(TRANSCRIBE_URL + '/v1/audio/transcriptions', data=b''.join(parts),
+                                 headers={'Content-Type': f'multipart/form-data; boundary={boundary}'}, method='POST')
+    with urllib.request.urlopen(req, timeout=TRANSCRIBE_TIMEOUT_S) as res:
+        return json.loads(res.read())['text']
+
+def _transcribe_via_server(audio_np):
+    duration = len(audio_np) / WHISPER_SAMPLERATE
+    started = time.perf_counter()
+    try:
+        text = _post_transcription(audio_np)
+        print(f"INFO: Transcribed via server in {time.perf_counter() - started:.2f}s ({duration:.2f}s audio)")
+        return text
+    except urllib.error.HTTPError as e:
+        print(f"WARNING: transcription server failed ({_server_error(e)}); "
+              f"falling back to local {FALLBACK_MODEL_NAME} on CPU", file=sys.stderr)
+    except Exception as e:
+        print(f"WARNING: transcription server unreachable ({_server_error(e)}); "
+              f"falling back to local {FALLBACK_MODEL_NAME} on CPU", file=sys.stderr)
+    fallback = _load_fallback_model()
+    started = time.perf_counter()
+    segments, info = fallback.transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=_settings.get('language') or None, task='transcribe')
+    text = ' '.join(seg.text for seg in segments)
+    print(f"INFO: Transcribed locally ({FALLBACK_MODEL_NAME}, cpu) in {time.perf_counter() - started:.2f}s ({duration:.2f}s audio)")
+    return text
+
 def transcribe_audio(audio_np):
     """Return the raw transcript for a mono float32 clip at WHISPER_SAMPLERATE."""
+    if USE_SERVER:
+        return _transcribe_via_server(audio_np)
     if USE_R2T2:
         tail = np.zeros(int(R2T2_TAIL_PAD_S * WHISPER_SAMPLERATE), dtype=audio_np.dtype)
         audio_np = np.concatenate([audio_np, tail])
@@ -937,7 +1043,11 @@ class DbdudeV2tApp:
         menu.addAction(self.status_action)
 
         # Model display
-        model_action = QAction(f"Model: {MODEL_NAME}", menu)
+        if USE_SERVER:
+            label = f"Model: server ({SERVER_STT.get('model')})" if SERVER_STT else "Model: server (unreachable at start)"
+        else:
+            label = f"Model: {MODEL_NAME}"
+        model_action = QAction(label, menu)
         model_action.setEnabled(False)
         menu.addAction(model_action)
 
