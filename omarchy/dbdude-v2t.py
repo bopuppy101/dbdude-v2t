@@ -411,6 +411,9 @@ def _load_r2t2_model():
         max_new_tokens=512,
     )
 
+# CTranslate2 uses only 4 CPU threads by default; use one per physical core
+CPU_THREADS = max(4, (os.cpu_count() or 8) // 2)
+
 if USE_R2T2:
     try:
         model = _load_r2t2_model()
@@ -436,10 +439,10 @@ else:
     try:
         if os.path.exists(LOCAL_MODEL_PATH):
             print(f"INFO: Using bundled model at {LOCAL_MODEL_PATH}", file=sys.stderr)
-            model = WhisperModel(LOCAL_MODEL_PATH, device=DEVICE, compute_type=COMPUTE_TYPE)
+            model = WhisperModel(LOCAL_MODEL_PATH, device=DEVICE, compute_type=COMPUTE_TYPE, cpu_threads=CPU_THREADS)
         else:
             print(f"INFO: Bundled model not found, downloading {MODEL_NAME} from HuggingFace...", file=sys.stderr)
-            model = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE)
+            model = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE, cpu_threads=CPU_THREADS)
         print("INFO: Model Loaded.", file=sys.stderr)
     except Exception as e:
         print(f"ERROR: Could not load Whisper Model: {e}", file=sys.stderr)
@@ -452,7 +455,8 @@ def transcribe_audio(audio_np):
         audio_np = np.concatenate([audio_np, tail])
         results = model.transcribe(audio=[(audio_np, WHISPER_SAMPLERATE)], language=[R2T2_LANGUAGE])
         return ' '.join(r.text for r in results)
-    segments, info = model.transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=None, task='transcribe')
+    # A fixed language skips Whisper's per-clip language detection pass
+    segments, info = model.transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=_settings.get('language') or None, task='transcribe')
     return ' '.join(seg.text for seg in segments)
 
 # Verify ydotool is available and its daemon socket is reachable.
