@@ -459,7 +459,9 @@ class ConfiguratorDialog(QDialog):
         """Auto-save when any setting changes."""
         if self._loading:
             return
+        # Keep keys this window doesn't show (such as transcribe_url)
         self.settings = {
+            **self.settings,
             'model': self.model_combo.currentText(),
             'language': self.get_language_code(),
             'log': self.log_checkbox.isChecked(),
