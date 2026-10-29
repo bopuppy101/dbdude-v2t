@@ -9,6 +9,10 @@ os.environ["PYTHONWARNINGS"] = "ignore::UserWarning"
 import sys
 from text_formatting import EXPLICIT_DOT, format_sentences
 import ctypes
+import io
+import urllib.error
+import urllib.request
+import wave
 import numpy as np
 import mlx_whisper
 from pynput.keyboard import Controller as KeyboardController
@@ -450,6 +454,116 @@ def get_model_name():
         return f"mlx-community/whisper-{model}-mlx"
 
 
+def transcribe_local(audio, model, language):
+    """Raw text from mlx-whisper, preferring a copy of the model bundled with the app."""
+    if language == 'en':
+        bundled_name = f"whisper-{model}.en-mlx"
+        model_name = f"mlx-community/whisper-{model}.en-mlx"
+    else:
+        bundled_name = f"whisper-{model}-mlx"
+        model_name = f"mlx-community/whisper-{model}-mlx"
+    model_path = get_resources_dir() / "models" / bundled_name
+    if model_path.exists():
+        result = mlx_whisper.transcribe(audio, path_or_hf_repo=str(model_path), condition_on_previous_text=False)
+    else:
+        result = mlx_whisper.transcribe(audio, path_or_hf_repo=model_name, condition_on_previous_text=False)
+    return result['text'].strip()
+
+
+# --- Shared Whisper server ---
+# With "transcribe_url" in settings.json (e.g. "http://127.0.0.1:8880", where
+# dbdude-tts serve answers POST /v1/audio/transcriptions), each clip goes to that
+# server, so V2T and dbdude-talk's /talk share one model. While the server is
+# unreachable or failing, the clip is transcribed here by FALLBACK_MODEL
+# (mlx-whisper loads it the first time it is needed) and the next clip tries the
+# server again. r2t2 ignores the setting.
+FALLBACK_MODEL = 'small'
+TRANSCRIBE_TIMEOUT_S = 30
+SERVER_STT = None  # the server's {"model", "device", "compute_type"}, from its /health
+
+
+def get_transcribe_url():
+    return (SETTINGS.get('transcribe_url') or '').rstrip('/')
+
+
+def _server_error(e):
+    """A short reason for a failed request to the transcription server."""
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            detail = json.loads(e.read()).get('detail')
+        except Exception:
+            detail = None
+        return f"HTTP {e.code}: {detail}" if detail else f"HTTP {e.code}"
+    if isinstance(e, urllib.error.URLError):
+        return str(e.reason)
+    return f"{type(e).__name__}: {e}"
+
+
+def check_transcription_server():
+    """Print which model the shared server runs, or that clips will fall back."""
+    global SERVER_STT
+    url = get_transcribe_url()
+    try:
+        with urllib.request.urlopen(url + '/health', timeout=3) as res:
+            SERVER_STT = json.loads(res.read()).get('stt')
+    except Exception as e:
+        print(f"WARNING: Transcription server {url} unreachable ({_server_error(e)}); "
+              f"clips will fall back to local {FALLBACK_MODEL} until it answers", flush=True)
+        return
+    if not SERVER_STT:
+        print(f"WARNING: Transcription server {url} has no Whisper loaded (speech-to-text off); "
+              f"clips will fall back to local {FALLBACK_MODEL}", flush=True)
+        return
+    print(f"Model: shared transcription server {url} ({SERVER_STT.get('model')}, "
+          f"{SERVER_STT.get('device')}, {SERVER_STT.get('compute_type')}); local model not loaded", flush=True)
+
+
+def post_transcription(audio, language):
+    """Text for a mono float32 clip at TARGET_SAMPLE_RATE from the server (OpenAI-style multipart).
+
+    No beam_size: mlx-whisper has no beam search, so the server picks its own."""
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(TARGET_SAMPLE_RATE)
+        w.writeframes((np.clip(audio, -1.0, 1.0) * 32767).astype('<i2').tobytes())
+    fields = {'model': 'whisper-1', 'response_format': 'json'}
+    # Locally the .en model fixes the language; a shared model may be multilingual, so say it.
+    if language:
+        fields['language'] = language
+    boundary = f"v2t{os.urandom(12).hex()}"
+    parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+             for k, v in fields.items()]
+    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="clip.wav"\r\n'
+                 'Content-Type: audio/wav\r\n\r\n'.encode() + buf.getvalue() + b'\r\n')
+    parts.append(f'--{boundary}--\r\n'.encode())
+    req = urllib.request.Request(get_transcribe_url() + '/v1/audio/transcriptions', data=b''.join(parts),
+                                 headers={'Content-Type': f'multipart/form-data; boundary={boundary}'}, method='POST')
+    with urllib.request.urlopen(req, timeout=TRANSCRIBE_TIMEOUT_S) as res:
+        return json.loads(res.read())['text']
+
+
+def transcribe_via_server(audio, language):
+    """Raw text from the shared server, or from local FALLBACK_MODEL when the server fails."""
+    duration = len(audio) / TARGET_SAMPLE_RATE
+    started = time.monotonic()
+    try:
+        text = post_transcription(audio, language).strip()
+        print(f"Transcribed via server in {time.monotonic() - started:.2f}s ({duration:.2f}s audio)", flush=True)
+        return text
+    except urllib.error.HTTPError as e:
+        print(f"WARNING: transcription server failed ({_server_error(e)}); "
+              f"falling back to local {FALLBACK_MODEL}", flush=True)
+    except Exception as e:
+        print(f"WARNING: transcription server unreachable ({_server_error(e)}); "
+              f"falling back to local {FALLBACK_MODEL}", flush=True)
+    started = time.monotonic()
+    text = transcribe_local(audio, FALLBACK_MODEL, language)
+    print(f"Transcribed locally ({FALLBACK_MODEL}) in {time.monotonic() - started:.2f}s ({duration:.2f}s audio)", flush=True)
+    return text
+
+
 def transcription_worker():
     while not shutdown_event.is_set():
         try:
@@ -467,18 +581,10 @@ def transcription_worker():
             language = SETTINGS.get('language', 'en')
             if model == R2T2_MODEL_NAME:
                 raw = r2t2_transcribe(audio, language).strip()
+            elif get_transcribe_url():
+                raw = transcribe_via_server(audio, language)
             else:
-                model_name = get_model_name()
-                if language == 'en':
-                    bundled_name = f"whisper-{model}.en-mlx"
-                else:
-                    bundled_name = f"whisper-{model}-mlx"
-                model_path = get_resources_dir() / "models" / bundled_name
-                if model_path.exists():
-                    result = mlx_whisper.transcribe(audio, path_or_hf_repo=str(model_path), condition_on_previous_text=False)
-                else:
-                    result = mlx_whisper.transcribe(audio, path_or_hf_repo=model_name, condition_on_previous_text=False)
-                raw = result['text'].strip()
+                raw = transcribe_local(audio, model, language)
             transcribe_time = time.monotonic() - transcribe_start
             print(f"Transcribed {recording_duration:.2f}s audio in {transcribe_time:.2f}s", flush=True)
             if not V2T_TEST_HOOKS and SETTINGS.get("log"):
@@ -977,10 +1083,14 @@ if __name__ == "__main__":
 
     load_settings()
 
-    model_name = get_model_name()
-    print(f"Model: {model_name}", flush=True)
-    print(f"Language: {SETTINGS.get('language', 'en')}", flush=True)
-    print(f"Quantization: MLX native (Metal GPU)", flush=True)
+    if get_transcribe_url() and SETTINGS.get('model') != R2T2_MODEL_NAME:
+        check_transcription_server()
+        print(f"Language: {SETTINGS.get('language', 'en')}", flush=True)
+    else:
+        model_name = get_model_name()
+        print(f"Model: {model_name}", flush=True)
+        print(f"Language: {SETTINGS.get('language', 'en')}", flush=True)
+        print(f"Quantization: MLX native (Metal GPU)", flush=True)
     print(flush=True)
 
     load_mappings()
