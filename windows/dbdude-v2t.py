@@ -26,6 +26,10 @@ import queue
 import subprocess
 import argparse
 import webbrowser
+import io
+import wave
+import urllib.error
+import urllib.request
 import atexit
 import signal
 import ctypes
@@ -208,6 +212,16 @@ MIN_AUDIO_RMS = 0.01
 MIN_TRANSCRIPTION_LENGTH = 1
 WHISPER_BEAM_SIZE = 2
 
+# Shared Whisper: with "transcribe_url" in settings.json (e.g.
+# "http://127.0.0.1:8880", where dbdude-tts serve answers POST
+# /v1/audio/transcriptions), each clip goes to that server and no local Whisper
+# loads at startup, so /talk and dbdude-v2t share one model on the GPU. While
+# the server is unreachable or failing, a local FALLBACK_MODEL_NAME on the CPU
+# takes the clip (loaded the first time it is needed) and the next clip tries
+# the server again. R2T2 always runs locally.
+FALLBACK_MODEL_NAME = 'small'
+TRANSCRIBE_TIMEOUT_S = 30
+
 # App data directory name
 # Module-level debug flag (set by run_voice2text)
 _DEBUG_MODE = False
@@ -281,6 +295,7 @@ def load_saved_settings():
         'log': False,
         'device': None,
         'debug': False,
+        'transcribe_url': None,
         'push_to_talk_keys': {
             'left_alt_shift': True,
             'right_alt': False,
@@ -300,12 +315,20 @@ def load_saved_settings():
 
 
 def save_settings(settings):
-    """Save settings to config file."""
+    """Save settings to config file, keeping keys `settings` doesn't name
+    (such as transcribe_url, which no window shows)."""
     path = get_settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
+        saved = {}
+        if path.exists():
+            try:
+                with open(path, 'r') as f:
+                    saved = json.load(f)
+            except Exception:
+                saved = {}
         with open(path, 'w') as f:
-            json.dump(settings, f, indent=2)
+            json.dump({**saved, **settings}, f, indent=2)
         print(f"INFO: Saved settings to {path}", file=sys.stderr)
     except Exception as e:
         print(f"ERROR: Could not save settings: {e}", file=sys.stderr)
@@ -1269,7 +1292,86 @@ def show_settings_gui(initial_model='medium', initial_lang='en', initial_log=Fal
 
 
 # --- Main dbdude-v2t Engine ---
-def run_voice2text(model_name, language, enable_logging, device_name, debug_mode=False, push_to_talk_keys=None):
+def _server_error(e):
+    """A short reason for a failed request to the transcription server."""
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            detail = json.loads(e.read()).get('detail')
+        except Exception:
+            detail = None
+        return f"HTTP {e.code}: {detail}" if detail else f"HTTP {e.code}"
+    if isinstance(e, urllib.error.URLError):
+        return str(e.reason)
+    return f"{type(e).__name__}: {e}"
+
+
+def check_transcription_server(url):
+    """Print which model the shared server runs, or that clips will fall back."""
+    try:
+        with urllib.request.urlopen(url + '/health', timeout=3) as res:
+            stt = json.loads(res.read()).get('stt')
+    except Exception as e:
+        print(f"WARNING: Transcription server {url} unreachable ({_server_error(e)}); "
+              f"clips will fall back to local {FALLBACK_MODEL_NAME} on CPU until it answers", file=sys.stderr)
+        return
+    if not stt:
+        print(f"WARNING: Transcription server {url} has no Whisper loaded (speech-to-text off); "
+              f"clips will fall back to local {FALLBACK_MODEL_NAME} on CPU", file=sys.stderr)
+        return
+    print(f"INFO: Using shared transcription server {url} ({stt.get('model')}, "
+          f"{stt.get('device')}, {stt.get('compute_type')}); local model not loaded", file=sys.stderr)
+
+
+_fallback_model = None
+_fallback_lock = threading.Lock()
+
+
+def load_fallback_model():
+    """The local CPU model used while the transcription server is unavailable."""
+    global _fallback_model
+    with _fallback_lock:
+        if _fallback_model is None:
+            print(f"INFO: Loading local fallback Whisper Model ({FALLBACK_MODEL_NAME}, cpu int8)...", file=sys.stderr)
+            _fallback_model = WhisperModel(FALLBACK_MODEL_NAME, device="cpu", compute_type="int8")
+        return _fallback_model
+
+
+def post_transcription(url, audio_np, language):
+    """Send a clip to the server's /v1/audio/transcriptions (OpenAI-style multipart)."""
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SAMPLERATE)
+        w.writeframes((np.clip(audio_np, -1.0, 1.0) * 32767).astype('<i2').tobytes())
+    fields = {'model': 'whisper-1', 'response_format': 'json', 'beam_size': str(WHISPER_BEAM_SIZE)}
+    if language:
+        fields['language'] = language
+    boundary = f"v2t{os.urandom(12).hex()}"
+    parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+             for k, v in fields.items()]
+    parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="clip.wav"\r\n'
+                 'Content-Type: audio/wav\r\n\r\n'.encode() + buf.getvalue() + b'\r\n')
+    parts.append(f'--{boundary}--\r\n'.encode())
+    req = urllib.request.Request(url + '/v1/audio/transcriptions', data=b''.join(parts),
+                                 headers={'Content-Type': f'multipart/form-data; boundary={boundary}'}, method='POST')
+    with urllib.request.urlopen(req, timeout=TRANSCRIBE_TIMEOUT_S) as res:
+        return json.loads(res.read())['text']
+
+
+def transcribe_via_server(url, audio_np, language):
+    """The clip's transcript from the shared server, or from the local fallback when it fails."""
+    try:
+        return post_transcription(url, audio_np, language)
+    except Exception as e:
+        print(f"WARNING: transcription server failed ({_server_error(e)}); "
+              f"falling back to local {FALLBACK_MODEL_NAME} on CPU", file=sys.stderr)
+    segments, info = load_fallback_model().transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=language, task='transcribe')
+    return ' '.join(seg.text for seg in segments)
+
+
+def run_voice2text(model_name, language, enable_logging, device_name, debug_mode=False, push_to_talk_keys=None,
+                   transcribe_url=None):
     """Run the dbdude-v2t engine with given settings."""
     global _DEBUG_MODE
     _DEBUG_MODE = debug_mode
@@ -1289,7 +1391,8 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
         'log': enable_logging,
         'device': device_name,
         'debug': debug_mode,
-        'push_to_talk_keys': push_to_talk_keys
+        'push_to_talk_keys': push_to_talk_keys,
+        'transcribe_url': transcribe_url,
     })
 
     # Setup logging directory
@@ -1309,6 +1412,9 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
 
     # Find audio device
     audio_device = find_device_by_name(device_name)
+
+    transcribe_url = (transcribe_url or '').rstrip('/')
+    use_server = bool(transcribe_url) and model_name != R2T2_MODEL_NAME
 
     # Detect GPU availability
     if ctranslate2.get_cuda_device_count() > 0:
@@ -1337,21 +1443,27 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
             print(f"ERROR: Could not load model '{name}': {e}", file=sys.stderr)
             return None
 
-    print(f"INFO: Loading Whisper Model ({model_name})...", file=sys.stderr)
-    model = try_load_model(model_name)
+    if use_server:
+        model = None
+        check_transcription_server(transcribe_url)
+    else:
+        print(f"INFO: Loading Whisper Model ({model_name})...", file=sys.stderr)
+        model = try_load_model(model_name)
 
     # Fallback to DEFAULT_MODEL if requested model failed
-    if model is None and model_name != DEFAULT_MODEL:
+    if model is None and not use_server and model_name != DEFAULT_MODEL:
         print(f"WARNING: Falling back to default model '{DEFAULT_MODEL}'...", file=sys.stderr)
         model = try_load_model(DEFAULT_MODEL)
         if model is not None:
             model_name = DEFAULT_MODEL  # Update for display purposes
 
-    if model is None:
+    if model is None and not use_server:
         messagebox.showerror("Error", f"Could not load Whisper Model.\nTried: {model_name}, {DEFAULT_MODEL}")
         return
 
-    if model_name == R2T2_MODEL_NAME:
+    if use_server:
+        pass
+    elif model_name == R2T2_MODEL_NAME:
         print("INFO: Model Loaded. (R2T2)", file=sys.stderr)
     else:
         print(f"INFO: Model Loaded. (quantization: {compute_type})", file=sys.stderr)
@@ -1474,7 +1586,9 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
 
         try:
             transcribe_start = time.time()
-            if model_name == R2T2_MODEL_NAME:
+            if use_server:
+                raw = transcribe_via_server(transcribe_url, audio_np, language)
+            elif model_name == R2T2_MODEL_NAME:
                 raw = r2t2_transcribe(model, audio_np, language)
             else:
                 segments, info = model.transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=language, task='transcribe')
@@ -1922,7 +2036,8 @@ def main():
             enable_logging=settings['log'],
             device_name=settings['device'],
             debug_mode=settings.get('debug', False),
-            push_to_talk_keys=settings.get('push_to_talk_keys')
+            push_to_talk_keys=settings.get('push_to_talk_keys'),
+            transcribe_url=settings.get('transcribe_url'),
         )
 
         # Check if restart was requested

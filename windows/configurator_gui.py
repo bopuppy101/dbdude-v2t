@@ -632,7 +632,9 @@ class ConfiguratorDialog(QDialog):
             self.ptt_left_alt_shift.setChecked(True)
             ptt_keys["left_alt_shift"] = True
 
+        # Keep keys this window doesn't show (such as transcribe_url)
         self.settings = {
+            **self.settings,
             'model': self.model_combo.currentText(),
             'language': self.get_language_code(),
             'log': self.log_checkbox.isChecked(),
