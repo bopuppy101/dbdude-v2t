@@ -221,6 +221,8 @@ WHISPER_BEAM_SIZE = 2
 # the server again. R2T2 always runs locally.
 FALLBACK_MODEL_NAME = 'small'
 TRANSCRIBE_TIMEOUT_S = 30
+SPEECH_SERVER_CHOSEN = False  # --speech-server was given
+SPEECH_SERVER_ALTERNATIVE = "Alternative: start V2T without --speech-server to use this machine's own speech server"
 
 # App data directory name
 # Module-level debug flag (set by run_voice2text)
@@ -1305,6 +1307,15 @@ def _server_error(e):
     return f"{type(e).__name__}: {e}"
 
 
+def speech_server_url(value):
+    """The address for --speech-server: a host, host:port or URL; "local" is this machine's own dbdude-tts."""
+    server = value.strip().rstrip('/')
+    if server.lower() == 'local':
+        return 'http://127.0.0.1:8880'
+    url = server if regex.match(r'https?://', server, regex.I) else f'http://{server}'
+    return url if regex.search(r':\d+$', url) else f'{url}:8880'
+
+
 def check_transcription_server(url):
     """Print which model the shared server runs, or that clips will fall back."""
     try:
@@ -1313,6 +1324,8 @@ def check_transcription_server(url):
     except Exception as e:
         print(f"WARNING: Transcription server {url} unreachable ({_server_error(e)}); "
               f"clips will fall back to local {FALLBACK_MODEL_NAME} on CPU until it answers", file=sys.stderr)
+        if SPEECH_SERVER_CHOSEN:
+            print(SPEECH_SERVER_ALTERNATIVE, file=sys.stderr)
         return
     if not stt:
         print(f"WARNING: Transcription server {url} has no Whisper loaded (speech-to-text off); "
@@ -1995,7 +2008,11 @@ def main():
     parser.add_argument('--language', choices=VALID_LANGUAGE_CODES, default=None, help='Transcription language (overrides saved setting)')
     parser.add_argument('--device', type=str, default=None, help='Audio input device name (overrides saved setting)')
     parser.add_argument('--configurator', action='store_true', help='Show configurator at startup (legacy mode)')
+    parser.add_argument('--speech-server', metavar='SERVER',
+                        help="Speech server for this run: a host, host:port or URL, or local for this machine's own (overrides transcribe_url, not saved)")
     args = parser.parse_args()
+    global SPEECH_SERVER_CHOSEN
+    SPEECH_SERVER_CHOSEN = bool(args.speech_server)
 
     # Load saved settings (or defaults if none saved)
     settings = load_saved_settings()
@@ -2037,7 +2054,7 @@ def main():
             device_name=settings['device'],
             debug_mode=settings.get('debug', False),
             push_to_talk_keys=settings.get('push_to_talk_keys'),
-            transcribe_url=settings.get('transcribe_url'),
+            transcribe_url=speech_server_url(args.speech_server) if args.speech_server else settings.get('transcribe_url'),
         )
 
         # Check if restart was requested
