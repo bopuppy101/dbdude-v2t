@@ -151,6 +151,8 @@ loaded the first time it is needed, and the next clip tries the server again. Th
 console shows which one was used and how long it took. Remove the key, or set it
 to `""`, to load `model` locally as before. `r2t2` ignores it.
 
+For one run, `--speech-server` overrides `transcribe_url` without saving it, on Omarchy, macOS and Windows: `rv --speech-server r16` or `rv --speech-server 192.168.1.16`. It takes a host, `host:port` or a URL (the port defaults to 8880), or `local` for this machine's own speech server. If that server doesn't answer at startup, V2T says so and suggests starting without the switch.
+
 ## Optional R2T2 model
 
 R2T2 is an experimental alternative to Whisper. First complete the normal install

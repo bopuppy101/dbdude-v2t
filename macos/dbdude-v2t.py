@@ -6,6 +6,7 @@
 import os
 os.environ["PYTHONWARNINGS"] = "ignore::UserWarning"
 
+import argparse
 import sys
 from text_formatting import EXPLICIT_DOT, format_sentences
 import ctypes
@@ -482,6 +483,19 @@ TRANSCRIBE_TIMEOUT_S = 30
 SERVER_STT = None  # the server's {"model", "device", "compute_type"}, from its /health
 
 
+SPEECH_SERVER_CHOSEN = False  # --speech-server was given
+SPEECH_SERVER_ALTERNATIVE = "Alternative: start V2T without --speech-server to use this machine's own speech server"
+
+
+def speech_server_url(value):
+    """The address for --speech-server: a host, host:port or URL; "local" is this machine's own dbdude-tts."""
+    server = value.strip().rstrip('/')
+    if server.lower() == 'local':
+        return 'http://127.0.0.1:8880'
+    url = server if re.match(r'https?://', server, re.I) else f'http://{server}'
+    return url if re.search(r':\d+$', url) else f'{url}:8880'
+
+
 def get_transcribe_url():
     return (SETTINGS.get('transcribe_url') or '').rstrip('/')
 
@@ -509,6 +523,8 @@ def check_transcription_server():
     except Exception as e:
         print(f"WARNING: Transcription server {url} unreachable ({_server_error(e)}); "
               f"clips will fall back to local {FALLBACK_MODEL} until it answers", flush=True)
+        if SPEECH_SERVER_CHOSEN:
+            print(SPEECH_SERVER_ALTERNATIVE, flush=True)
         return
     if not SERVER_STT:
         print(f"WARNING: Transcription server {url} has no Whisper loaded (speech-to-text off); "
@@ -1067,6 +1083,11 @@ def recording_control_tick():
 if __name__ == "__main__":
     from datetime import datetime
 
+    parser = argparse.ArgumentParser(description='Hold Fn to record, release to transcribe')
+    parser.add_argument('--speech-server', metavar='SERVER',
+                        help="Speech server for this run: a host, host:port or URL, or local for this machine's own (overrides transcribe_url, not saved)")
+    args = parser.parse_args()
+
     print("=" * 50, flush=True)
     print("dbdude-v2t for macOS", flush=True)
     print("=" * 50, flush=True)
@@ -1082,6 +1103,9 @@ if __name__ == "__main__":
     print(flush=True)
 
     load_settings()
+    if args.speech_server:
+        SPEECH_SERVER_CHOSEN = True
+        SETTINGS['transcribe_url'] = speech_server_url(args.speech_server)
 
     if get_transcribe_url() and SETTINGS.get('model') != R2T2_MODEL_NAME:
         check_transcription_server()

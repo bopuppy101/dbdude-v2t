@@ -45,6 +45,8 @@ parser.add_argument('--log', action='store_true', help='Enable logging transcrip
 parser.add_argument('--no-log', action='store_true', help='Disable logging (overrides settings)')
 parser.add_argument('--model', choices=VALID_MODELS, default=None, help='Whisper model size or r2t2 (default: from settings or base)')
 parser.add_argument('--debug', action='store_true', help='Enable debug output for mapping steps')
+parser.add_argument('--speech-server', metavar='SERVER',
+                    help="Speech server for this run: a host, host:port or URL, or local for this machine's own (overrides transcribe_url, not saved)")
 args = parser.parse_args()
 
 _DEBUG_MODE = args.debug
@@ -85,7 +87,18 @@ MODEL_NAME = args.model if args.model else _settings.get('model', 'base')
 # server and no local Whisper loads at startup. While the server is unreachable
 # or failing, a local FALLBACK_MODEL_NAME on the CPU takes the clip (loaded the
 # first time it is needed) and the next clip tries the server again.
-TRANSCRIBE_URL = (_settings.get('transcribe_url') or '').rstrip('/')
+
+def speech_server_url(value):
+    """The address for --speech-server: a host, host:port or URL; "local" is this machine's own dbdude-tts."""
+    server = value.strip().rstrip('/')
+    if server.lower() == 'local':
+        return 'http://127.0.0.1:8880'
+    url = server if regex.match(r'https?://', server, regex.I) else f'http://{server}'
+    return url if regex.search(r':\d+$', url) else f'{url}:8880'
+
+
+SPEECH_SERVER_ALTERNATIVE = "Alternative: start V2T without --speech-server to use this machine's own speech server"
+TRANSCRIBE_URL = speech_server_url(args.speech_server) if args.speech_server else (_settings.get('transcribe_url') or '').rstrip('/')
 FALLBACK_MODEL_NAME = 'small'
 TRANSCRIBE_TIMEOUT_S = 30
 
@@ -447,6 +460,8 @@ def _check_transcription_server():
     except Exception as e:
         print(f"WARNING: Transcription server {TRANSCRIBE_URL} unreachable ({_server_error(e)}); "
               f"clips will fall back to local {FALLBACK_MODEL_NAME} on CPU until it answers", file=sys.stderr)
+        if args.speech_server:
+            print(SPEECH_SERVER_ALTERNATIVE, file=sys.stderr)
         return
     if not SERVER_STT:
         print(f"WARNING: Transcription server {TRANSCRIBE_URL} has no Whisper loaded (speech-to-text off); "
