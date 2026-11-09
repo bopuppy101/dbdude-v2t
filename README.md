@@ -54,6 +54,61 @@ with **Reload Mapping Files**.
 
 macOS uses Fn instead of Alt+Shift.
 
+## Using a shared speech server
+
+On Omarchy, macOS and Windows, V2T can send each clip to a speech server instead
+of loading its own Whisper model, for example `dbdude-tts serve` from dbdude-talk
+running on another machine. The `--speech-server` switch picks the server for one run:
+
+```bash
+./run-dbdude-v2t.bash --speech-server 192.168.1.16
+```
+
+The examples below use `rv`, a shell alias for your platform's start command
+(on Omarchy, `omarchy/run-dbdude-v2t.bash`):
+
+```bash
+rv --speech-server 192.168.1.16          # host or IP address; port 8880 is used
+rv --speech-server 192.168.1.16:9000     # host:port
+rv --speech-server http://192.168.1.16:8880   # full URL
+rv --speech-server local                 # this machine's own server, http://127.0.0.1:8880
+alias rvs='rv --speech-server 192.168.1.16'
+```
+
+A hostname such as `r16` works wherever that name resolves.
+
+- The switch applies to that run only and is not saved.
+- Without it, V2T uses `transcribe_url` from `settings.json`
+  (`~/.dbdude-v2t/` on Omarchy and Windows, `~/Library/Application Support/dbdude-v2t/`
+  on macOS). With neither, it loads its own model as usual.
+- No environment variable is read for the server address.
+- The `r2t2` model ignores the server and runs locally.
+
+At startup V2T asks the server which model it runs and prints it:
+
+```
+INFO: Using shared transcription server http://192.168.1.16:8880 (large-v3-turbo, cuda, float16); local model not loaded
+```
+
+(macOS prints the same details on a line starting `Model: shared transcription server`.)
+On Omarchy and macOS each clip also logs which one transcribed it:
+
+```
+INFO: Transcribed via server at http://192.168.1.16:8880 in 0.41s (3.20s audio)
+INFO: Transcribed via local server (http://127.0.0.1:8880) in 0.38s (3.20s audio)
+INFO: Transcribed locally (small, cpu) in 1.92s (3.20s audio)
+```
+
+macOS prints these without the `INFO:` prefix, and its local line reads
+`Transcribed locally (small)`. The model names and times above are examples.
+
+If the server can't be reached, V2T still starts. It prints a warning, suggests
+starting without `--speech-server`, and transcribes each clip with a local `small`
+model until the server answers; every clip tries the server first.
+
+See [docs/installation-omarchy-technical.md](docs/installation-omarchy-technical.md)
+for the `transcribe_url` setting.
+
 ## Installation
 
 Choose your platform and preferred level of detail. Each guide is self-contained.
