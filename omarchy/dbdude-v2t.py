@@ -9,6 +9,7 @@ import io
 import json
 import wave
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 # Allow duplicate OpenMP runtimes (NumPy MKL + ONNX) to coexist
@@ -95,6 +96,12 @@ def speech_server_url(value):
         return 'http://127.0.0.1:8880'
     url = server if regex.match(r'https?://', server, regex.I) else f'http://{server}'
     return url if regex.search(r':\d+$', url) else f'{url}:8880'
+
+
+def server_label(url):
+    """How the log names a speech server: this machine's own is "local server (url)", any other "server at url"."""
+    host = urllib.parse.urlsplit(url).hostname
+    return f'local server ({url})' if host in ('127.0.0.1', 'localhost', '::1') else f'server at {url}'
 
 
 SPEECH_SERVER_ALTERNATIVE = "Alternative: start V2T without --speech-server to use this machine's own speech server"
@@ -552,7 +559,7 @@ def _transcribe_via_server(audio_np):
     started = time.perf_counter()
     try:
         text = _post_transcription(audio_np)
-        print(f"INFO: Transcribed via server in {time.perf_counter() - started:.2f}s ({duration:.2f}s audio)")
+        print(f"INFO: Transcribed via {server_label(TRANSCRIBE_URL)} in {time.perf_counter() - started:.2f}s ({duration:.2f}s audio)")
         return text
     except urllib.error.HTTPError as e:
         print(f"WARNING: transcription server failed ({_server_error(e)}); "

@@ -12,6 +12,7 @@ from text_formatting import EXPLICIT_DOT, format_sentences
 import ctypes
 import io
 import urllib.error
+import urllib.parse
 import urllib.request
 import wave
 import numpy as np
@@ -496,6 +497,12 @@ def speech_server_url(value):
     return url if re.search(r':\d+$', url) else f'{url}:8880'
 
 
+def server_label(url):
+    """How the log names a speech server: this machine's own is "local server (url)", any other "server at url"."""
+    host = urllib.parse.urlsplit(url).hostname
+    return f'local server ({url})' if host in ('127.0.0.1', 'localhost', '::1') else f'server at {url}'
+
+
 def get_transcribe_url():
     return (SETTINGS.get('transcribe_url') or '').rstrip('/')
 
@@ -566,7 +573,7 @@ def transcribe_via_server(audio, language):
     started = time.monotonic()
     try:
         text = post_transcription(audio, language).strip()
-        print(f"Transcribed via server in {time.monotonic() - started:.2f}s ({duration:.2f}s audio)", flush=True)
+        print(f"Transcribed via {server_label(get_transcribe_url())} in {time.monotonic() - started:.2f}s ({duration:.2f}s audio)", flush=True)
         return text
     except urllib.error.HTTPError as e:
         print(f"WARNING: transcription server failed ({_server_error(e)}); "
