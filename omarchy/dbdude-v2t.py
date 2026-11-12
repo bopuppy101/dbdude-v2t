@@ -85,9 +85,9 @@ MODEL_NAME = args.model if args.model else _settings.get('model', 'base')
 
 # Shared Whisper: with "transcribe_url" set (e.g. "http://127.0.0.1:8880", where
 # dbdude-tts serve answers POST /v1/audio/transcriptions), each clip goes to that
-# server and no local Whisper loads at startup. While the server is unreachable
-# or failing, a local FALLBACK_MODEL_NAME on the CPU takes the clip (loaded the
-# first time it is needed) and the next clip tries the server again.
+# server and no local Whisper loads at startup. There is no fallback model: when
+# the server is unreachable or fails, the clip is not transcribed, an error box
+# says why, and the next clip tries the server again.
 
 def speech_server_url(value):
     """The address for --speech-server: a host, host:port or URL; "local" is this machine's own dbdude-tts."""
@@ -105,9 +105,43 @@ def server_label(url):
 
 
 SPEECH_SERVER_ALTERNATIVE = "Alternative: start V2T without --speech-server to use this machine's own speech server"
+SPEECH_SERVER_START = "start the speech server on that machine (dbdude-tts serve)."
 TRANSCRIBE_URL = speech_server_url(args.speech_server) if args.speech_server else (_settings.get('transcribe_url') or '').rstrip('/')
-FALLBACK_MODEL_NAME = 'small'
 TRANSCRIBE_TIMEOUT_S = 30
+
+_error_boxes = []     # open error boxes, kept referenced so Qt does not destroy them
+_startup_errors = []  # (title, message) raised before the Qt application exists
+
+
+def _open_error_box(title, message):
+    """A window with the error that stays until closed and does not hold up the app."""
+    box = QMessageBox(QMessageBox.Icon.Critical, title, message)
+    box.setWindowModality(Qt.WindowModality.NonModal)
+    box.finished.connect(lambda _result, b=box: _error_boxes.remove(b))
+    _error_boxes.append(box)
+    box.show()
+
+
+def show_error_box(title, message):
+    """Put an error on screen without waiting for it to be closed, and print it.
+
+    Call from the Qt main thread. Before the Qt application exists (startup), the
+    error is printed now and its box opens as soon as the tray icon is up."""
+    print(f"ERROR: {title}: {message}", file=sys.stderr)
+    if QApplication.instance() is None:
+        _startup_errors.append((title, message))
+    else:
+        _open_error_box(title, message)
+
+
+def speech_server_fix(how):
+    """How to get dictation working again when the speech server fails; `how` is the fix on the server."""
+    fix = (f"To fix: {how} V2T tries the server again on the next dictation; no restart is needed.\n\n"
+           "To use a different server: restart V2T with --speech-server <host>, or set "
+           "\"transcribe_url\" in ~/.dbdude-v2t/settings.json.")
+    if args.speech_server:
+        fix += "\n\n" + SPEECH_SERVER_ALTERNATIVE
+    return fix
 
 # --- Configuration ---
 
@@ -459,20 +493,25 @@ def _server_error(e):
     return f"{type(e).__name__}: {e}"
 
 def _check_transcription_server():
-    """Print which model the shared server runs, or that clips will fall back."""
+    """Print which model the shared server runs, or show an error box when it can't transcribe."""
     global SERVER_STT
     try:
         with urllib.request.urlopen(TRANSCRIBE_URL + '/health', timeout=3) as res:
             SERVER_STT = json.loads(res.read()).get('stt')
     except Exception as e:
-        print(f"WARNING: Transcription server {TRANSCRIBE_URL} unreachable ({_server_error(e)}); "
-              f"clips will fall back to local {FALLBACK_MODEL_NAME} on CPU until it answers", file=sys.stderr)
-        if args.speech_server:
-            print(SPEECH_SERVER_ALTERNATIVE, file=sys.stderr)
+        show_error_box("V2T: speech server unreachable",
+                       f"The speech server {TRANSCRIBE_URL} did not answer when V2T started.\n\n"
+                       f"Error: {_server_error(e)}\n\n"
+                       "Dictation is not transcribed until the server answers. No other model is used.\n\n"
+                       + speech_server_fix(SPEECH_SERVER_START))
         return
     if not SERVER_STT:
-        print(f"WARNING: Transcription server {TRANSCRIBE_URL} has no Whisper loaded (speech-to-text off); "
-              f"clips will fall back to local {FALLBACK_MODEL_NAME} on CPU", file=sys.stderr)
+        show_error_box("V2T: speech server has speech-to-text off",
+                       f"The speech server {TRANSCRIBE_URL} answered, but it has no Whisper model loaded "
+                       "(speech-to-text is off).\n\n"
+                       "Dictation is not transcribed until that server runs speech-to-text. "
+                       "No other model is used.\n\n"
+                       + speech_server_fix("restart dbdude-tts serve on that machine without --no-stt."))
         return
     print(f"INFO: Using shared transcription server {TRANSCRIBE_URL} ({SERVER_STT.get('model')}, "
           f"{SERVER_STT.get('device')}, {SERVER_STT.get('compute_type')}); local model not loaded", file=sys.stderr)
@@ -489,9 +528,6 @@ if USE_R2T2:
         sys.exit(1)
 elif USE_SERVER:
     model = None
-    # The server is its own process: CUDA_VISIBLE_DEVICES here only affects the fallback
-    if os.environ.get('CUDA_VISIBLE_DEVICES') in ('', '-1'):
-        print("INFO: GPU acceleration disabled by CUDA_VISIBLE_DEVICES; local fallback will use CPU", file=sys.stderr)
     _check_transcription_server()
 else:
     # Detect GPU availability
@@ -520,18 +556,6 @@ else:
         print(f"ERROR: Could not load Whisper Model: {e}", file=sys.stderr)
         sys.exit(1)
 
-_fallback_model = None
-_fallback_lock = threading.Lock()
-
-def _load_fallback_model():
-    """The local CPU model used while the transcription server is unavailable."""
-    global _fallback_model
-    with _fallback_lock:
-        if _fallback_model is None:
-            print(f"INFO: Loading local fallback Whisper Model ({FALLBACK_MODEL_NAME}, cpu int8)...", file=sys.stderr)
-            _fallback_model = WhisperModel(FALLBACK_MODEL_NAME, device="cpu", compute_type="int8", cpu_threads=CPU_THREADS)
-        return _fallback_model
-
 def _post_transcription(audio_np):
     """Send a clip to the server's /v1/audio/transcriptions (OpenAI-style multipart)."""
     buf = io.BytesIO()
@@ -555,27 +579,24 @@ def _post_transcription(audio_np):
         return json.loads(res.read())['text']
 
 def _transcribe_via_server(audio_np):
+    """The clip's transcript from the shared server, or None (with an error box up) when the server fails."""
     duration = len(audio_np) / WHISPER_SAMPLERATE
     started = time.perf_counter()
     try:
         text = _post_transcription(audio_np)
-        print(f"INFO: Transcribed via {server_label(TRANSCRIBE_URL)} in {time.perf_counter() - started:.2f}s ({duration:.2f}s audio)")
-        return text
-    except urllib.error.HTTPError as e:
-        print(f"WARNING: transcription server failed ({_server_error(e)}); "
-              f"falling back to local {FALLBACK_MODEL_NAME} on CPU", file=sys.stderr)
     except Exception as e:
-        print(f"WARNING: transcription server unreachable ({_server_error(e)}); "
-              f"falling back to local {FALLBACK_MODEL_NAME} on CPU", file=sys.stderr)
-    fallback = _load_fallback_model()
-    started = time.perf_counter()
-    segments, info = fallback.transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=_settings.get('language') or None, task='transcribe')
-    text = ' '.join(seg.text for seg in segments)
-    print(f"INFO: Transcribed locally ({FALLBACK_MODEL_NAME}, cpu) in {time.perf_counter() - started:.2f}s ({duration:.2f}s audio)")
+        show_error_box("V2T: dictation not transcribed",
+                       f"The speech server {TRANSCRIBE_URL} failed, so this {duration:.1f} s "
+                       "dictation was not transcribed and nothing was typed. No other model is used.\n\n"
+                       f"Error: {_server_error(e)}\n\n"
+                       "Say the dictation again once the server answers.\n\n"
+                       + speech_server_fix(SPEECH_SERVER_START))
+        return None
+    print(f"INFO: Transcribed via {server_label(TRANSCRIBE_URL)} in {time.perf_counter() - started:.2f}s ({duration:.2f}s audio)")
     return text
 
 def transcribe_audio(audio_np):
-    """Return the raw transcript for a mono float32 clip at WHISPER_SAMPLERATE."""
+    """Return the raw transcript for a mono float32 clip at WHISPER_SAMPLERATE (None when the speech server failed)."""
     if USE_SERVER:
         return _transcribe_via_server(audio_np)
     if USE_R2T2:
@@ -716,6 +737,8 @@ def process_and_output(buffer_list):
     print(f"INFO: Transcribing ({duration:.2f}s)...")
     try:
         raw = transcribe_audio(audio_np)
+        if raw is None:  # the speech server failed; its error box is already on screen
+            return
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Transcribed: {raw.strip()}")
         final = process_and_validate_text(raw)
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Mapped to:   {final}")
@@ -1042,6 +1065,11 @@ class DbdudeV2tApp:
 
         # Show tray icon
         self.tray.show()
+
+        # Errors raised before the Qt application existed (already printed)
+        for title, message in _startup_errors:
+            _open_error_box(title, message)
+        _startup_errors.clear()
 
         # Setup keyboard polling timer (20ms interval, same as original)
         self.poll_timer = QTimer()

@@ -26,6 +26,7 @@ import json
 import re
 import time
 import signal
+import subprocess
 from scipy.signal import resample_poly
 from Cocoa import NSEvent, NSFlagsChanged, NSEventMaskFlagsChanged, NSFunctionKeyMask
 import objc
@@ -475,17 +476,39 @@ def transcribe_local(audio, model, language):
 # --- Shared Whisper server ---
 # With "transcribe_url" in settings.json (e.g. "http://127.0.0.1:8880", where
 # dbdude-tts serve answers POST /v1/audio/transcriptions), each clip goes to that
-# server, so V2T and dbdude-talk's /talk share one model. While the server is
-# unreachable or failing, the clip is transcribed here by FALLBACK_MODEL
-# (mlx-whisper loads it the first time it is needed) and the next clip tries the
-# server again. r2t2 ignores the setting.
-FALLBACK_MODEL = 'small'
+# server, so V2T and dbdude-talk's /talk share one model. There is no fallback
+# model: when the server is unreachable or fails, the clip is not transcribed, an
+# alert on screen says why, and the next clip tries the server again. r2t2
+# ignores the setting.
 TRANSCRIBE_TIMEOUT_S = 30
 SERVER_STT = None  # the server's {"model", "device", "compute_type"}, from its /health
 
 
 SPEECH_SERVER_CHOSEN = False  # --speech-server was given
 SPEECH_SERVER_ALTERNATIVE = "Alternative: start V2T without --speech-server to use this machine's own speech server"
+SPEECH_SERVER_START = "start the speech server on that machine (dbdude-tts serve)."
+
+
+def show_error_box(title, message):
+    """Put an error on screen from any thread, without waiting for it to be closed, and print it.
+
+    osascript shows the alert in its own process, so it needs no run loop here and
+    does not hold up recording or transcription."""
+    print(f"ERROR: {title}: {message}", flush=True)
+    subprocess.Popen(['osascript', '-e', 'on run argv', '-e', 'tell me to activate',
+                      '-e', 'display alert (item 1 of argv) message (item 2 of argv) as critical',
+                      '-e', 'end run', title, message],
+                     stdout=subprocess.DEVNULL, start_new_session=True)
+
+
+def speech_server_fix(how):
+    """How to get dictation working again when the speech server fails; `how` is the fix on the server."""
+    fix = (f"To fix: {how} V2T tries the server again on the next dictation; no restart is needed.\n\n"
+           "To use a different server: restart V2T with --speech-server <host>, or set "
+           f"\"transcribe_url\" in {get_user_data_dir() / 'settings.json'}.")
+    if SPEECH_SERVER_CHOSEN:
+        fix += "\n\n" + SPEECH_SERVER_ALTERNATIVE
+    return fix
 
 
 def speech_server_url(value):
@@ -521,21 +544,26 @@ def _server_error(e):
 
 
 def check_transcription_server():
-    """Print which model the shared server runs, or that clips will fall back."""
+    """Print which model the shared server runs, or show an alert when it can't transcribe."""
     global SERVER_STT
     url = get_transcribe_url()
     try:
         with urllib.request.urlopen(url + '/health', timeout=3) as res:
             SERVER_STT = json.loads(res.read()).get('stt')
     except Exception as e:
-        print(f"WARNING: Transcription server {url} unreachable ({_server_error(e)}); "
-              f"clips will fall back to local {FALLBACK_MODEL} until it answers", flush=True)
-        if SPEECH_SERVER_CHOSEN:
-            print(SPEECH_SERVER_ALTERNATIVE, flush=True)
+        show_error_box("V2T: speech server unreachable",
+                       f"The speech server {url} did not answer when V2T started.\n\n"
+                       f"Error: {_server_error(e)}\n\n"
+                       "Dictation is not transcribed until the server answers. No other model is used.\n\n"
+                       + speech_server_fix(SPEECH_SERVER_START))
         return
     if not SERVER_STT:
-        print(f"WARNING: Transcription server {url} has no Whisper loaded (speech-to-text off); "
-              f"clips will fall back to local {FALLBACK_MODEL}", flush=True)
+        show_error_box("V2T: speech server has speech-to-text off",
+                       f"The speech server {url} answered, but it has no Whisper model loaded "
+                       "(speech-to-text is off).\n\n"
+                       "Dictation is not transcribed until that server runs speech-to-text. "
+                       "No other model is used.\n\n"
+                       + speech_server_fix("restart dbdude-tts serve on that machine without --no-stt."))
         return
     print(f"Model: shared transcription server {url} ({SERVER_STT.get('model')}, "
           f"{SERVER_STT.get('device')}, {SERVER_STT.get('compute_type')}); local model not loaded", flush=True)
@@ -568,22 +596,20 @@ def post_transcription(audio, language):
 
 
 def transcribe_via_server(audio, language):
-    """Raw text from the shared server, or from local FALLBACK_MODEL when the server fails."""
+    """Raw text from the shared server, or None (with an alert up) when the server fails."""
     duration = len(audio) / TARGET_SAMPLE_RATE
     started = time.monotonic()
     try:
         text = post_transcription(audio, language).strip()
-        print(f"Transcribed via {server_label(get_transcribe_url())} in {time.monotonic() - started:.2f}s ({duration:.2f}s audio)", flush=True)
-        return text
-    except urllib.error.HTTPError as e:
-        print(f"WARNING: transcription server failed ({_server_error(e)}); "
-              f"falling back to local {FALLBACK_MODEL}", flush=True)
     except Exception as e:
-        print(f"WARNING: transcription server unreachable ({_server_error(e)}); "
-              f"falling back to local {FALLBACK_MODEL}", flush=True)
-    started = time.monotonic()
-    text = transcribe_local(audio, FALLBACK_MODEL, language)
-    print(f"Transcribed locally ({FALLBACK_MODEL}) in {time.monotonic() - started:.2f}s ({duration:.2f}s audio)", flush=True)
+        show_error_box("V2T: dictation not transcribed",
+                       f"The speech server {get_transcribe_url()} failed, so this {duration:.1f} s "
+                       "dictation was not transcribed and nothing was typed. No other model is used.\n\n"
+                       f"Error: {_server_error(e)}\n\n"
+                       "Say the dictation again once the server answers.\n\n"
+                       + speech_server_fix(SPEECH_SERVER_START))
+        return None
+    print(f"Transcribed via {server_label(get_transcribe_url())} in {time.monotonic() - started:.2f}s ({duration:.2f}s audio)", flush=True)
     return text
 
 
@@ -606,6 +632,8 @@ def transcription_worker():
                 raw = r2t2_transcribe(audio, language).strip()
             elif get_transcribe_url():
                 raw = transcribe_via_server(audio, language)
+                if raw is None:  # the speech server failed; its alert is already on screen
+                    continue
             else:
                 raw = transcribe_local(audio, model, language)
             transcribe_time = time.monotonic() - transcribe_start

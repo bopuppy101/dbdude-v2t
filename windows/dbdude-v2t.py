@@ -130,10 +130,23 @@ def show_error_dialog(title: str, message: str):
     dialog.wait_window()
 
 
+MB_ICONERROR = 0x10
+MB_TOPMOST = 0x40000
+
+
+def show_error_box(title: str, message: str):
+    """Put an error on screen from any thread, without waiting for it to be closed.
+
+    A Win32 message box in its own thread: it stays on top of other windows (the
+    console is hidden by default) and does not hold up recording or transcription.
+    The same text goes to the console and ~/logs/v2t-error.log.
+    """
+    log_error(f"ERROR: {title}: {message}")
+    threading.Thread(target=ctypes.windll.user32.MessageBoxW,
+                     args=(None, message, title, MB_ICONERROR | MB_TOPMOST), daemon=True).start()
+
+
 # --- Configuration Constants ---
-# Default model to fall back to if settings.json has invalid model
-# "base" is bundled with the installer and always available
-DEFAULT_MODEL = "base"
 
 # --- R2T2 (Confucius4-R2T2) support ---
 # 'r2t2' in models.json selects NetEase Youdao's Confucius4-R2T2, a 2B
@@ -158,14 +171,13 @@ R2T2_LANGUAGE_NAMES = {
 R2T2_TAIL_PAD_S = 5.0
 
 def load_r2t2_model():
-    """Load Confucius4-R2T2 via qwen-asr. Returns the model, or None on failure."""
+    """Load Confucius4-R2T2 via qwen-asr. Raises RuntimeError with the reason on failure."""
     try:
         import torch
         from qwen_asr import Qwen3ASRModel
     except ImportError as e:
-        print(f"ERROR: The r2t2 model needs torch and qwen-asr ({e}).", file=sys.stderr)
-        print("       Install them with: .\\setup.ps1 -WithR2T2", file=sys.stderr)
-        return None
+        raise RuntimeError(f"The r2t2 model needs torch and qwen-asr ({e}).\n"
+                           "Install them with: .\\setup.ps1 -WithR2T2") from e
     if torch.cuda.is_available():
         device_map, dtype = "cuda:0", torch.bfloat16
         print("INFO: NVIDIA GPU detected, loading R2T2 in bf16 on CUDA", file=sys.stderr)
@@ -182,8 +194,7 @@ def load_r2t2_model():
             max_new_tokens=512,
         )
     except Exception as e:
-        print(f"ERROR: Could not load R2T2 model: {e}", file=sys.stderr)
-        return None
+        raise RuntimeError(f"Could not load R2T2 model ({R2T2_REPO}) on {device_map}: {e}") from e
 
 def r2t2_transcribe(model, audio_np, language_code):
     """Transcribe one mono float32 clip at SAMPLERATE with R2T2; return raw text."""
@@ -220,14 +231,14 @@ WHISPER_BEAM_SIZE = 2
 # Shared Whisper: with "transcribe_url" in settings.json (e.g.
 # "http://127.0.0.1:8880", where dbdude-tts serve answers POST
 # /v1/audio/transcriptions), each clip goes to that server and no local Whisper
-# loads at startup, so /talk and dbdude-v2t share one model on the GPU. While
-# the server is unreachable or failing, a local FALLBACK_MODEL_NAME on the CPU
-# takes the clip (loaded the first time it is needed) and the next clip tries
-# the server again. R2T2 always runs locally.
-FALLBACK_MODEL_NAME = 'small'
+# loads at startup, so /talk and dbdude-v2t share one model on the GPU. There is
+# no fallback model: when the server is unreachable or fails, the clip is not
+# transcribed, an error box says why, and the next clip tries the server again.
+# R2T2 always runs locally.
 TRANSCRIBE_TIMEOUT_S = 30
 SPEECH_SERVER_CHOSEN = False  # --speech-server was given
 SPEECH_SERVER_ALTERNATIVE = "Alternative: start V2T without --speech-server to use this machine's own speech server"
+SPEECH_SERVER_START = "start the speech server on that machine (dbdude-tts serve)."
 
 # App data directory name
 # Module-level debug flag (set by run_voice2text)
@@ -1321,37 +1332,38 @@ def speech_server_url(value):
     return url if regex.search(r':\d+$', url) else f'{url}:8880'
 
 
+def speech_server_fix(how):
+    """How to get dictation working again when the speech server fails; `how` is the fix on the server."""
+    fix = (f"To fix: {how} V2T tries the server again on the next dictation; no restart is needed.\n\n"
+           "To use a different server: restart V2T with --speech-server <host>, or set "
+           f"\"transcribe_url\" in {get_settings_path()}.")
+    if SPEECH_SERVER_CHOSEN:
+        fix += "\n\n" + SPEECH_SERVER_ALTERNATIVE
+    return fix
+
+
 def check_transcription_server(url):
-    """Print which model the shared server runs, or that clips will fall back."""
+    """Print which model the shared server runs, or show an error box when it can't transcribe."""
     try:
         with urllib.request.urlopen(url + '/health', timeout=3) as res:
             stt = json.loads(res.read()).get('stt')
     except Exception as e:
-        print(f"WARNING: Transcription server {url} unreachable ({_server_error(e)}); "
-              f"clips will fall back to local {FALLBACK_MODEL_NAME} on CPU until it answers", file=sys.stderr)
-        if SPEECH_SERVER_CHOSEN:
-            print(SPEECH_SERVER_ALTERNATIVE, file=sys.stderr)
+        show_error_box("V2T: speech server unreachable",
+                       f"The speech server {url} did not answer when V2T started.\n\n"
+                       f"Error: {_server_error(e)}\n\n"
+                       "Dictation is not transcribed until the server answers. No other model is used.\n\n"
+                       + speech_server_fix(SPEECH_SERVER_START))
         return
     if not stt:
-        print(f"WARNING: Transcription server {url} has no Whisper loaded (speech-to-text off); "
-              f"clips will fall back to local {FALLBACK_MODEL_NAME} on CPU", file=sys.stderr)
+        show_error_box("V2T: speech server has speech-to-text off",
+                       f"The speech server {url} answered, but it has no Whisper model loaded "
+                       "(speech-to-text is off).\n\n"
+                       "Dictation is not transcribed until that server runs speech-to-text. "
+                       "No other model is used.\n\n"
+                       + speech_server_fix("restart dbdude-tts serve on that machine without --no-stt."))
         return
     print(f"INFO: Using shared transcription server {url} ({stt.get('model')}, "
           f"{stt.get('device')}, {stt.get('compute_type')}); local model not loaded", file=sys.stderr)
-
-
-_fallback_model = None
-_fallback_lock = threading.Lock()
-
-
-def load_fallback_model():
-    """The local CPU model used while the transcription server is unavailable."""
-    global _fallback_model
-    with _fallback_lock:
-        if _fallback_model is None:
-            print(f"INFO: Loading local fallback Whisper Model ({FALLBACK_MODEL_NAME}, cpu int8)...", file=sys.stderr)
-            _fallback_model = WhisperModel(FALLBACK_MODEL_NAME, device="cpu", compute_type="int8")
-        return _fallback_model
 
 
 def post_transcription(url, audio_np, language):
@@ -1375,17 +1387,6 @@ def post_transcription(url, audio_np, language):
                                  headers={'Content-Type': f'multipart/form-data; boundary={boundary}'}, method='POST')
     with urllib.request.urlopen(req, timeout=TRANSCRIBE_TIMEOUT_S) as res:
         return json.loads(res.read())['text']
-
-
-def transcribe_via_server(url, audio_np, language):
-    """The clip's transcript from the shared server, or from the local fallback when it fails."""
-    try:
-        return post_transcription(url, audio_np, language)
-    except Exception as e:
-        print(f"WARNING: transcription server failed ({_server_error(e)}); "
-              f"falling back to local {FALLBACK_MODEL_NAME} on CPU", file=sys.stderr)
-    segments, info = load_fallback_model().transcribe(audio_np, beam_size=WHISPER_BEAM_SIZE, language=language, task='transcribe')
-    return ' '.join(seg.text for seg in segments)
 
 
 def run_voice2text(model_name, language, enable_logging, device_name, debug_mode=False, push_to_talk_keys=None,
@@ -1444,40 +1445,36 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
         compute_type = "int8"
         print("INFO: No NVIDIA GPU detected, using CPU mode (slower)", file=sys.stderr)
 
-    # Load model (with fallback to DEFAULT_MODEL if requested model fails)
-    def try_load_model(name):
-        """Attempt to load a Whisper model by name. Returns model or None."""
+    # Load the requested model. There is no fallback to another model: when the
+    # requested model does not load, an error box says why and V2T stops.
+    def load_model(name):
+        """Load a model by name. Raises with the reason when it does not load."""
         if name == R2T2_MODEL_NAME:
             return load_r2t2_model()
         local_path = os.path.realpath(os.path.join(str(get_app_dir()), "models", f"faster-whisper-{name}"))
-        try:
-            if os.path.exists(local_path):
-                print(f"INFO: Using bundled model at {local_path}", file=sys.stderr)
-                return WhisperModel(local_path, device=device, compute_type=compute_type)
-            else:
-                print(f"INFO: Bundled model not found, downloading {name} from HuggingFace...", file=sys.stderr)
-                return WhisperModel(name, device=device, compute_type=compute_type)
-        except Exception as e:
-            print(f"ERROR: Could not load model '{name}': {e}", file=sys.stderr)
-            return None
+        if os.path.exists(local_path):
+            print(f"INFO: Using bundled model at {local_path}", file=sys.stderr)
+            return WhisperModel(local_path, device=device, compute_type=compute_type)
+        print(f"INFO: Bundled model not found, downloading {name} from HuggingFace...", file=sys.stderr)
+        return WhisperModel(name, device=device, compute_type=compute_type)
 
     if use_server:
         model = None
         check_transcription_server(transcribe_url)
     else:
         print(f"INFO: Loading Whisper Model ({model_name})...", file=sys.stderr)
-        model = try_load_model(model_name)
-
-    # Fallback to DEFAULT_MODEL if requested model failed
-    if model is None and not use_server and model_name != DEFAULT_MODEL:
-        print(f"WARNING: Falling back to default model '{DEFAULT_MODEL}'...", file=sys.stderr)
-        model = try_load_model(DEFAULT_MODEL)
-        if model is not None:
-            model_name = DEFAULT_MODEL  # Update for display purposes
-
-    if model is None and not use_server:
-        messagebox.showerror("Error", f"Could not load Whisper Model.\nTried: {model_name}, {DEFAULT_MODEL}")
-        return
+        try:
+            model = load_model(model_name)
+        except Exception as e:
+            message = (f"The model '{model_name}' did not load, so V2T is stopping. No other model was tried.\n\n"
+                       f"Error: {type(e).__name__}: {e}\n\n"
+                       f"Whisper device: {device} ({compute_type})\n\n"
+                       "To fix: correct the error above, or choose another model: start V2T with "
+                       "--model <name> or --configurator, or change \"model\" in "
+                       f"{get_settings_path()}. Then start V2T again.")
+            log_error(f"ERROR: V2T: model did not load: {message}")
+            messagebox.showerror("V2T: model did not load", message)
+            return
 
     if use_server:
         pass
@@ -1605,7 +1602,16 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
         try:
             transcribe_start = time.time()
             if use_server:
-                raw = transcribe_via_server(transcribe_url, audio_np, language)
+                try:
+                    raw = post_transcription(transcribe_url, audio_np, language)
+                except Exception as e:
+                    show_error_box("V2T: dictation not transcribed",
+                                   f"The speech server {transcribe_url} failed, so this {duration:.1f} s "
+                                   "dictation was not transcribed and nothing was typed. No other model is used.\n\n"
+                                   f"Error: {_server_error(e)}\n\n"
+                                   "Say the dictation again once the server answers.\n\n"
+                                   + speech_server_fix(SPEECH_SERVER_START))
+                    return
             elif model_name == R2T2_MODEL_NAME:
                 raw = r2t2_transcribe(model, audio_np, language)
             else:
