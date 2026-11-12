@@ -96,15 +96,19 @@ On Omarchy and macOS each clip also logs which one transcribed it:
 ```
 INFO: Transcribed via server at http://192.168.1.16:8880 in 0.41s (3.20s audio)
 INFO: Transcribed via local server (http://127.0.0.1:8880) in 0.38s (3.20s audio)
-INFO: Transcribed locally (small, cpu) in 1.92s (3.20s audio)
 ```
 
-macOS prints these without the `INFO:` prefix, and its local line reads
-`Transcribed locally (small)`. The model names and times above are examples.
+macOS prints these without the `INFO:` prefix. The model names and times above
+are examples.
 
-If the server can't be reached, V2T still starts. It prints a warning, suggests
-starting without `--speech-server`, and transcribes each clip with a local `small`
-model until the server answers; every clip tries the server first.
+There is no fallback model on any platform. If the server can't be reached at
+startup, V2T still starts and shows an error box on screen. When the server can't
+be reached or fails for a dictation, an error box gives the server address, the
+error and how to fix it, and that dictation is not transcribed; the next dictation
+tries the server again.
+
+On Windows the same holds for a local model: if the chosen model does not load, an
+error box says why and V2T stops instead of loading a different model.
 
 See [docs/installation-omarchy-technical.md](docs/installation-omarchy-technical.md)
 for the `transcribe_url` setting.

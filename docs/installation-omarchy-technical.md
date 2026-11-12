@@ -146,9 +146,9 @@ Add `transcribe_url` to `~/.dbdude-v2t/settings.json`:
 
 Each clip then goes to the server, and no local Whisper loads at startup (`model`
 is not used; the server's model is printed at startup). If the server is
-unreachable or fails, the clip is transcribed by a local `small` model on the CPU,
-loaded the first time it is needed, and the next clip tries the server again. The
-console shows which one was used and how long it took. Remove the key, or set it
+unreachable or fails, the clip is not transcribed and no other model is used: an
+error box on screen gives the server address, the error and how to fix it, and the
+next clip tries the server again. The console shows how long each clip took. Remove the key, or set it
 to `""`, to load `model` locally as before. `r2t2` ignores it.
 
 For one run, `--speech-server` overrides `transcribe_url` without saving it, on Omarchy, macOS and Windows: `rv --speech-server r16` or `rv --speech-server 192.168.1.16`. It takes a host, `host:port` or a URL (the port defaults to 8880), or `local` for this machine's own speech server. If that server doesn't answer at startup, V2T says so and suggests starting without the switch.
