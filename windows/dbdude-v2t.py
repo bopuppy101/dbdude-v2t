@@ -206,6 +206,11 @@ SAMPLERATE = 16000
 CHANNELS = 1
 AUDIO_DTYPE = 'float32'
 AUDIO_BLOCKSIZE = 1024
+# After the push-to-talk keys come up, keep capturing this long before stopping:
+# the microphone delivers audio about 0.1 s behind real time, and the keys often
+# lift a moment before the last word ends. Without this tail the clip ends
+# mid-word and Whisper drops that word.
+RELEASE_TAIL_S = 0.4
 MIN_AUDIO_DURATION_S = 0.5
 MIN_AUDIO_AMPLITUDE = 0.02
 MIN_AUDIO_RMS = 0.01
@@ -1945,6 +1950,7 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
                     recording = True
                 elif not record_key_held and recording:
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] Stopping & queuing for transcription...")
+                    time.sleep(RELEASE_TAIL_S)  # capture the end of the last word
                     recording_event.clear()
                     if debug_mode:
                         print("DEBUG: recording_event.clear() called - stopped recording")
