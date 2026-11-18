@@ -1810,6 +1810,21 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
     # Register hooks now (startup). SLEEPWAKE-L3 re-registers these on resume.
     register_keyboard_hooks()
 
+    def record_combo_held():
+        """True when an enabled push-to-talk combination is held, per the hook's key flags."""
+        with state_lock:
+            left_alt = state['left_alt_held']
+            right_alt = state['right_alt_held']
+            shift = state['shift_held']
+            left_ctrl = state['left_ctrl_held']
+        if push_to_talk_keys.get('left_alt_shift', True) and left_alt and shift:
+            return True
+        if push_to_talk_keys.get('right_alt', False) and right_alt:
+            return True
+        if push_to_talk_keys.get('left_ctrl_shift', False) and left_ctrl and shift:
+            return True
+        return False
+
     # Main loop state
     recording = False
     continuous_mode = False
@@ -1955,16 +1970,23 @@ def run_voice2text(model_name, language, enable_logging, device_name, debug_mode
                         print("DEBUG: recording_event.set() called - now recording")
                     recording = True
                 elif not record_key_held and recording:
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Stopping & queuing for transcription...")
                     time.sleep(RELEASE_TAIL_S)  # capture the end of the last word
-                    recording_event.clear()
-                    if debug_mode:
-                        print("DEBUG: recording_event.clear() called - stopped recording")
-                    recording = False
-                    time.sleep(0.05)
-                    captured_audio = drain_queue("recording_stop_capture")
-                    if captured_audio:
-                        transcription_queue.put(captured_audio)
+                    if record_combo_held():
+                        # The keys are down again before the tail ended: a brief
+                        # lift (tremor, key bounce, wireless dropout), not a
+                        # release. The microphone kept capturing throughout, so
+                        # the same recording carries on with no audio lost.
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] Brief key lift (under {RELEASE_TAIL_S} s) ignored; recording continues")
+                    else:
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] Stopping & queuing for transcription...")
+                        recording_event.clear()
+                        if debug_mode:
+                            print("DEBUG: recording_event.clear() called - stopped recording")
+                        recording = False
+                        time.sleep(0.05)
+                        captured_audio = drain_queue("recording_stop_capture")
+                        if captured_audio:
+                            transcription_queue.put(captured_audio)
 
             # Check if restart was requested from configurator
             if is_restart_requested():
